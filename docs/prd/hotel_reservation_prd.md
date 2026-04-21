@@ -106,6 +106,14 @@
 - **예약 확정 시 반드시 reservation-service 에서 재검증** — 캐시 조회만 믿고 확정하지 않음
 - 캐시 재구축 배치 필수 (이벤트 유실 대비)
 
+**Billing 책임 · Saga (Q1 Resolved)**:
+예약 확정에 수반되는 `Billing` 생성은 **rate-service** 가 `reservation-events/ReservationCreated` 를 구독해 담당한다. reservation-service 는 예약 생성 시점의 `totalAmount` 견적을 위해서만 `rate.proto/GetRoomTypeRate` 단일 gRPC 를 동기 호출한다 (Deadline 3초 · Circuit Breaker 필수).
+
+- 정상 경로: `ReservationCreated` → rate Billing 생성 → `BillingCreated` → reservation 확정 단계 전이
+- 보상 경로: Billing 실패 → `BillingCreationFailed` → reservation 자동 취소 + 재고 복원
+
+상세 근거와 대안 비교는 **[ADR 0003 Saga for Reservation](../adr/0003-saga-for-reservation.md)** · CQRS 근거는 **[ADR 0004 CQRS for RoomAvailability](../adr/0004-cqrs-for-room-availability.md)** 참조.
+
 ---
 
 ## 4. 사용자 시나리오
@@ -324,15 +332,30 @@ hotel-service: Room 변경 → RoomCreated/Updated/Deleted 이벤트 발행
 
 ---
 
-## 13. 열린 질문
+## 13. 열린 질문 · 결정 (Resolved 2026-04-21)
 
-- [ ] 요금 계산 주체: reservation-service 가 rate-service gRPC 조회? 또는 rate-service 가 이벤트 구독 후 별도 Billing 생성?
-- [ ] 투숙객 조회 실패 정책: Strict (차단) vs Lenient (일단 허용 후 보정)?
-- [ ] 취소 위약금 정책 상세 (시간대별 %)
-- [ ] Kafka 파티션 키 전략 (호텔별 / 예약별)
-- [ ] 공개 API Gateway 필요 여부
-- [ ] 인증/인가 구현 범위 (이번 PRD? 별도?)
-- [ ] 캐시 TTL 정책 상세 (기본 48시간? 짧게?)
+초안 시점의 open questions 는 Plan 문서 §2 에서 모두 합의되었으며, 아래에 답안을 병합한다. 상세 근거는 관련 ADR 참조.
+
+- [x] **Q1. 요금 계산 주체**: reservation-service 가 rate-service gRPC 조회? 또는 rate-service 가 이벤트 구독 후 별도 Billing 생성?
+  **답안**: **이벤트 구독 + 최소 동기 조회**. rate-service 가 `ReservationCreated` 를 구독해 Billing 생성 · `BillingCreated`/`BillingCreationFailed` 발행. 예약 생성 시 `totalAmount` 견적은 `rate.proto/GetRoomTypeRate` 단일 RPC 로 동기 조회. Saga 보상: 실패 시 예약 자동 취소. → **[ADR 0003](../adr/0003-saga-for-reservation.md)**
+
+- [x] **Q2. 투숙객 조회 실패 정책**: Strict (차단) vs Lenient (일단 허용 후 보정)?
+  **답안**: **Strict**. Circuit Breaker 발동 시 `503 EXTERNAL_SERVICE_UNAVAILABLE` 반환. 근거: guest 정보 없는 예약은 체크인 · 커뮤니케이션 · 결제 연결 전부 불가.
+
+- [x] **Q3. 취소 위약금 정책 상세**: 시간대별 %.
+  **답안**: **초기 2단계** — 체크인 24시간 전까지 환불 100% · 이내 환불 0%. `CancellationPolicy` VO 로 추상화해 향후 72h/24h/당일 차등 확장 가능. 실제 환불 처리는 별도 결제 PRD (`002-payment.md`) 확정 전까지 "상태 기록만".
+
+- [x] **Q4. Kafka 파티션 키 전략**: 호텔별 / 예약별?
+  **답안**: **토픽별 상이**. `hotel-events` · `rate-events` · `reservation-events` 는 `hotelId` (동일 호텔 이벤트 순서 보장 · 구독자 부하 분산). `billing-events` 는 `reservationId` (예약 단위 Saga 응답 순서 보장).
+
+- [x] **Q5. 공개 API Gateway 필요 여부**
+  **답안**: **이번 PRD 범위 외**. Q6 와 연동되므로 인증 PRD 에서 함께 결정. 로컬은 각 서비스 포트 직접 노출, 운영은 Ingress/LB.
+
+- [x] **Q6. 인증/인가 구현 범위**: 이번 PRD? 별도?
+  **답안**: **별도 PRD 로 분리** (OAuth2 · JWT · Role 매트릭스). 이번 PRD 는 임시로 `X-Guest-Id` 헤더로 guest 식별. 관리자 API 는 최소 IP 제한 + 외부 노출 금지.
+
+- [x] **Q7. 캐시 TTL 정책 상세**: 기본 48시간? 짧게?
+  **답안**: **TTL 없음**. 이벤트 기반 갱신(`ReservationCreated/Cancelled` 구독) + 일일 배치 재구축 (02:00 KST, `StreamInventory` gRPC) + **90일 범위만 캐시**. Redis `maxmemory-policy=noeviction`. → **[ADR 0004](../adr/0004-cqrs-for-room-availability.md)**
 
 ---
 
