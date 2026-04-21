@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package com.reservation.contracts.reservation;
+
+option java_multiple_files = true;
+option java_package = "com.reservation.contracts.reservation";
+option java_outer_classname = "ReservationProto";
+
+// reservation-service 가 제공. hotel-service 가 Redis 가용성 캐시를
+// 재구축하는 배치(FR-H-08)에서 호출한다.
+// server-streaming 이므로 대량 Inventory 를 한 번의 호출로 순차 수신.
+service ReservationInventoryService {
+  rpc StreamInventory(StreamInventoryRequest) returns (stream RoomTypeInventorySnapshot);
+}
+
+message StreamInventoryRequest {
+  string hotel_id = 1;
+  // 포함, ISO-8601
+  string from_date = 2;
+  // 포함, ISO-8601
+  string to_date = 3;
+}
+
+// RoomTypeInventory Aggregate 의 특정 날짜 스냅샷.
+// 오버부킹 정책·예약 중/확정 구분 등은 reservation-service 내부 상태이므로 노출하지 않고,
+// SoT 가 계산한 최종 가용 재고(`available`)만 외부에 공개한다.
+// 호출자(hotel-service 캐시 재구축)는 `available` 을 그대로 `RoomAvailabilityView` 에 사용.
+message RoomTypeInventorySnapshot {
+  string hotel_id = 1;
+  string room_type_id = 2;
+  // ISO-8601
+  string date = 3;
+  int32 total_inventory = 4;
+  // SoT 가 오버부킹 허용치를 반영해 계산한 현재 가용 재고.
+  int32 available = 5;
+}

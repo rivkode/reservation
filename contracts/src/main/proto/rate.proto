@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package com.reservation.contracts.rate;
+
+option java_multiple_files = true;
+option java_package = "com.reservation.contracts.rate";
+option java_outer_classname = "RateProto";
+
+// rate-service 가 제공. reservation-service 가 예약 생성 시 totalAmount 견적용으로 호출.
+// 확정 Billing 은 rate-service 가 ReservationCreated 이벤트를 구독해 비동기로 생성 (Saga).
+// 클라이언트는 Deadline 3초 · Circuit Breaker 필수.
+service RateService {
+  // 특정 호텔·객실 타입·날짜의 1박 요금을 조회한다.
+  // 예약 생성 시 totalAmount 견적이 필요한 클라이언트는 체크인 ~ 체크아웃-1 범위의
+  // 날짜마다 본 RPC 를 호출해 합산한다 (N 일 = N 회 호출).
+  rpc GetRoomTypeRate(GetRoomTypeRateRequest) returns (RoomTypeRate);
+}
+
+message RoomTypeRate {
+  string hotel_id = 1;
+  string room_type_id = 2;
+  // ISO-8601 (YYYY-MM-DD)
+  string date = 3;
+  // 통화 최소 단위 (예: KRW 는 원 단위 정수)
+  int64 amount = 4;
+  // ISO-4217
+  string currency = 5;
+}
+
+message GetRoomTypeRateRequest {
+  string hotel_id = 1;
+  string room_type_id = 2;
+  // 견적 대상 날짜 1 건 (ISO-8601). 범위는 클라이언트가 반복 호출한다.
+  string date = 3;
+}

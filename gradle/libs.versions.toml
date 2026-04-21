@@ -1,6 +1,9 @@
 [versions]
 spring-boot = "3.3.5"
 dependency-management = "1.1.7"
+protobuf = "3.25.5"
+protobuf-plugin = "0.9.4"
+grpc = "1.68.1"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -8,6 +11,12 @@ spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "dependency-management" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
