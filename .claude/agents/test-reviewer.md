@@ -76,15 +76,15 @@ grep -rn "@SpringBootTest\|@DataJpaTest\|@WebMvcTest\|@ExtendWith" src/test/java
 #### 🟠 Application 테스트 체크
 
 - [ ] `@ExtendWith(MockitoExtension.class)` 사용 (`@SpringBootTest` 금지)
-- [ ] Repository, Port(외부 시스템), `DomainEventPublisher` 만 Mock
+- [ ] Repository, 외부 연동 인터페이스, `ApplicationEventPublisher` 만 Mock
 - [ ] **Domain 객체는 실제로 생성**되어 있는가?
-    - `mock(Order.class)` → ❌
-    - `Order.place(id, customerId, lines, now)` → ✅
+  - `mock(Order.class)` → ❌
+  - `Order.place(id, customerId, lines, now)` → ✅
 - [ ] VO/DTO 가 Mock 되지 않았는가?
 - [ ] `Clock.fixed(...)` 로 시간이 고정되어 있는가?
 - [ ] 성공 경로뿐 아니라 **예외 경로**도 테스트되었는가?
-    - 주문 없음 → `OrderNotFoundException`
-    - 상태 위반 → 도메인 예외 전파
+  - 주문 없음 → `OrderNotFoundException`
+  - 상태 위반 → 도메인 예외 전파
 - [ ] Mock 호출 검증이 "호출되었는가" 뿐 아니라 **올바른 인자, 올바른 횟수** 까지 확인하는가?
 - [ ] 실패 케이스에서 `save()` 나 `publish()` 가 **호출되지 않았음**을 검증하는가?
 
@@ -151,7 +151,7 @@ grep -rn "@Mock.*Id\s\|@Mock.*Money\|@Mock.*Email" src/test/java/
 - [ ] `assertThat(...)` (AssertJ) 일관 사용, `assertEquals(...)` 혼용 없음
 - [ ] `assertThrows(...)` 보다 `assertThatThrownBy(...).isInstanceOf(...).hasMessageContaining(...)` 권장
 - [ ] 컬렉션 단언이 AssertJ chain 으로 간결한가?
-    - `.hasSize(n).extracting(...).containsExactly(...)`
+  - `.hasSize(n).extracting(...).containsExactly(...)`
 - [ ] `@DisplayName` 으로 한국어 사양이 병기되어 있는가?
 
 ### 7. 출력 형식

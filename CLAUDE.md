@@ -1,179 +1,233 @@
 # CLAUDE.md
 
-이 문서는 Claude Code가 본 프로젝트에서 작업할 때 반드시 따라야 할 기준과 워크플로우를 정의합니다.
-모든 작업 시작 전 이 문서를 먼저 읽고, 단계별로 `.claude/skills/` 하위의 해당 SKILL.md를 참조하세요.
+이 저장소에서 Claude Code가 지켜야 할 **최상위 규칙**. 세부 지침은 `.claude/skills/` 와 `.claude/agents/` 에서 계층적으로 제공된다.
 
 ---
 
-## 1. 프로젝트 개요
+## 프로젝트
 
-- **언어 / 런타임**: Java 21, Spring Boot 3.x
-- **빌드 도구**: Gradle (Kotlin DSL)
-- **아키텍처**: DDD (Domain-Driven Design) + Layered Architecture 스타일
-- **DB**: 운영 - PostgreSQL / 테스트 - H2 또는 Testcontainers
-- **ORM**: Spring Data JPA (단, JPA Entity는 Infrastructure 계층에만 위치)
-- **테스트**: JUnit 5 (Jupiter), AssertJ, Mockito, Spring Boot Test
-- **문서화**: JavaDoc + Spring REST Docs(또는 Swagger) + ADR
-
----
-
-## 2. 핵심 원칙 (NEVER 위반 금지)
-
-이 원칙은 모든 작업에 우선 적용됩니다. 예외는 없으며, 위반이 불가피한 경우 **반드시 사용자에게 근거를 먼저 질문**해야 합니다.
-
-1. **도메인 객체 ≠ DB Entity**
-   - `domain/model` 의 도메인 객체는 JPA/Hibernate 어노테이션(`@Entity`, `@Column`, `@Table` 등)을 **절대로** 포함하지 않는다.
-   - DB 저장용 객체는 `infrastructure/persistence/entity` 하위의 `XxxJpaEntity` 로 분리한다.
-   - 둘 사이의 변환은 `infrastructure/persistence/mapper` 의 Mapper 가 담당한다.
-
-2. **의존성 방향은 항상 안쪽으로 향한다**
-   - Domain ← Application ← Infrastructure / Presentation
-   - Domain 계층은 Spring, JPA, Jackson 등 어떤 외부 프레임워크에도 의존하지 않는다.
-
-3. **계층별 테스트는 서로 독립적이다**
-   - Domain 테스트는 Spring 컨텍스트 없이 순수 JUnit 으로만 수행한다 (1초 이내 통과).
-   - Application 테스트는 Repository/외부 API 를 Mock 으로 대체한다.
-   - Infrastructure 테스트는 `@DataJpaTest` 등 슬라이스 테스트로 DB 만 검증한다.
-   - Presentation 테스트는 `@WebMvcTest` 로 HTTP 경계만 검증하고, Application 은 Mock 으로 둔다.
-
-4. **테스트 없는 코드는 머지 금지**
-   - 모든 public 메서드와 분기는 최소 1개 이상의 테스트로 커버되어야 한다.
-   - 테스트 코드는 프로덕션 코드와 동일한 PR 에 포함되어야 한다.
-
-5. **Claude 는 코드 작성 전에 반드시 계획을 수립하고 사용자 승인을 받는다**
-   - 모호한 요구사항을 임의로 해석하지 않는다.
-   - 불명확한 부분은 추정하지 말고 질문한다.
+- **스택**: Java 21, Spring Boot 3.x, Gradle (Kotlin DSL) **멀티모듈** (모노레포)
+- **아키텍처**: MSA + 서비스별 DDD Layered
+- **서비스간 통신**: 동기 **gRPC** (`grpc-spring-boot-starter`), 비동기 **Kafka**
+- **DB**: 서비스당 **MySQL** 스키마 분리 (Database per Service). 테스트는 Testcontainers(MySQL)
+- **캐시**: Redis (조회용 Read Model 보관 — hotel-service 의 가용성 조회 등)
+- **테스트**: JUnit 5, AssertJ, Mockito, Spring Boot Test, Testcontainers
 
 ---
 
-## 3. 전체 워크플로우
+## 서비스 구조
 
-사용자가 요구사항을 전달하면 아래 순서로 진행합니다. 각 단계별로 해당 SKILL.md 를 반드시 읽고 그 지침을 따릅니다.
+각 서비스는 **독립적인 Bounded Context** 이며 자체 Gradle 모듈이다.
+
+| 서비스 모듈 | 책임 | 주요 Aggregate |
+|---|---|---|
+| `hotel-service` | 호텔/객실 마스터 정보 관리 + **가용성 조회 Read Model (Redis 캐시)** | `Hotel`, `Room` |
+| `rate-service` | 객실 타입별 요금 정책 | `RoomTypeRate` |
+| `guest-service` | 투숙객 정보 관리 | `Guest` |
+| `reservation-service` | 예약 생성/취소 + **객실 재고의 Source of Truth** | `RoomTypeInventory`, `Reservation` |
+
+### 재고 소유 원칙 (중요)
+
+- **`RoomTypeInventory` (쓰기, SoT)**: `reservation-service` 소유.
+  예약 생성/취소 시 같은 로컬 트랜잭션에서 차감/복원하여 **오버부킹 방지**.
+- **`RoomAvailabilityView` (읽기, 캐시)**: `hotel-service` 소유.
+  고속 조회용. reservation-service 의 이벤트를 구독해 Redis 에 비동기 갱신 (최종 일관성).
+- **예약 확정은 반드시 reservation-service 에서 재검증**. 캐시만 믿고 예약 완료하지 않는다.
+
+**공유 모듈** (최소한):
+- `contracts` — 서비스간 **공개 계약**.
+  - `event/` — Kafka 이벤트 스키마 (`record`)
+  - `proto/` — **gRPC .proto 파일 및 생성된 stub**
+  - 도메인 공유 금지.
+- `common-infrastructure` — 공통 Spring 설정 (로깅, 모니터링, 예외 표준, gRPC 공통 인터셉터). 도메인 공유 금지.
+
+---
+
+## 핵심 원칙 (NEVER 위반)
+
+1. **서비스 경계는 Bounded Context.** 한 서비스의 Domain / JpaEntity / Repository 를 다른 서비스가 **절대** 직접 참조하지 않는다. 공유는 `contracts` 의 명시적 계약만.
+2. **Database per Service.** 각 서비스는 자기 DB 스키마만 소유. 다른 서비스 DB에 직접 쿼리 금지.
+3. **도메인 객체 ≠ DB Entity.** 도메인에 JPA/Spring 어노테이션 금지. JPA는 `infrastructure/persistence/entity/XxxJpaEntity` 에 격리하고 Mapper 로 변환.
+4. **의존성은 항상 안쪽으로.** Domain ← Application ← Infrastructure / Presentation. Domain은 어떤 프레임워크에도 의존하지 않는다.
+5. **계층별 테스트는 독립적.** Domain 은 Spring 없이, Application 은 Repository Mock 으로, Infrastructure 는 `@DataJpaTest`, Presentation 은 `@WebMvcTest`.
+6. **테스트 없는 코드는 머지 금지.** 모든 public 메서드와 분기는 테스트로 커버.
+7. **계획 없이 구현 금지.** 요구사항을 받으면 계획을 수립하고 사용자 승인을 받은 뒤 착수한다.
+8. **서비스간 동기 호출 최소화.** 기본은 비동기 이벤트. 동기는 조회성에 한해, Circuit Breaker 필수.
+
+---
+
+## 워크플로우
 
 ```
-[1] 요구사항 수신
-        │
-        ▼
-[2] 코드 계획 수립 및 검증 ───▶  .claude/skills/code-planning/SKILL.md
-        │  (도메인 모델링, API 설계, TodoList, 사용자 승인)
-        ▼
-[3] DDD 아키텍처 기반 구현 ───▶  .claude/skills/ddd-architecture/SKILL.md
-        │  (도메인 → 애플리케이션 → 인프라 → 프레젠테이션 순)
-        ▼
-[4] 테스트 코드 작성 ─────────▶  .claude/skills/testing-junit/SKILL.md
-        │  (계층별 Given-When-Then, Mock/Real 기준)
-        ▼
-[5] 문서화 ──────────────────▶  .claude/skills/documentation/SKILL.md
-        │  (JavaDoc, README 업데이트, ADR)
-        ▼
-[6] 커밋 ────────────────────▶  .claude/skills/commit-convention/SKILL.md
-        │  (Conventional Commits, 원자적 커밋)
-        ▼
-[7] PR 생성 ─────────────────▶  .claude/skills/pr-guidelines/SKILL.md
-           (템플릿, 체크리스트, 리뷰 포인트)
+[요구사항]
+    ↓
+[계획]    📘 code-planning
+          ↳ 어느 서비스(들)에 영향? 서비스간 통신 필요?
+    ↓
+[모듈 경계 검토]   📘 module-boundary  (여러 서비스 관여 / 새 이벤트 / 새 API 시)
+    ↓
+[설계 검증]   🤖 ddd-architect     (새 Aggregate / 모델 큰 변경 시)
+    ↓
+[구현]    📘 ddd-architecture
+    ↓
+[테스트]  📘 testing-junit
+    ↓
+[리뷰]    🤖 code-reviewer  +  🤖 test-reviewer   (병렬)
+          🤖 security-reviewer  (인증/결제/PII/파일/관리자 시)
+    ↓
+[문서]    📘 documentation
+    ↓
+[커밋]    📘 commit-convention
+    ↓
+[PR]      📘 pr-guidelines
 ```
 
-**각 단계는 건너뛸 수 없습니다.** 예: 테스트 없이 커밋으로 진행하지 않으며, 계획 승인 없이 구현에 착수하지 않습니다.
+**판정 대응 규칙**: 에이전트가 `NEEDS CHANGES` / `REJECT` / `BLOCK` 을 반환하면 다음 단계로 진행하지 않고 수정 후 같은 에이전트를 재호출한다. 임의 판단으로 건너뛰지 않는다.
 
 ---
 
-## 4. 디렉토리 구조 (표준)
+## PRD 참조 규칙
+
+새로운 기능 요청을 받으면 `code-planning` 스킬의 Step 1 직전에:
+
+1. `docs/prd/` 디렉토리를 먼저 확인한다.
+2. 요청과 관련된 PRD 파일을 **전체** 읽는다.
+3. 관련 PRD가 있으면:
+   - Goals / Non-Goals 를 명시적으로 재진술에 포함
+   - **영향 받는 서비스 모듈을 PRD 의 "Service Impact" 섹션에서 확인**
+   - Non-Goals 침범, FR 누락은 즉시 지적
+4. PRD 규모가 크면 **서비스별 + 기능별** 로 단위 PR 분할 제안 후 승인받고 착수.
+
+---
+
+## 저장소 디렉토리 구조
 
 ```
-src/main/java/com/example/project/
-├── domain/                          # 순수 도메인 (프레임워크 의존 금지)
-│   ├── model/                       # Aggregate Root, Entity, Value Object
-│   ├── repository/                  # Repository 인터페이스 (구현 아님)
-│   ├── service/                     # Domain Service
-│   ├── event/                       # Domain Event
-│   └── exception/                   # Domain 예외
-│
-├── application/                     # Use Case / 트랜잭션 경계
-│   ├── service/                     # Application Service
-│   ├── dto/                         # Command / Query / Result
-│   └── port/                        # 외부 시스템 호출 인터페이스 (out port)
-│
-├── infrastructure/                  # 기술 세부사항
-│   ├── persistence/
-│   │   ├── entity/                  # JPA Entity (XxxJpaEntity)
-│   │   ├── repository/              # Spring Data JPA + Domain Repository 구현
-│   │   └── mapper/                  # Domain ↔ JpaEntity 변환
-│   ├── external/                    # 외부 API 어댑터
-│   └── config/                      # Spring 설정
-│
-└── presentation/                    # HTTP / 메시징 진입점
-    ├── controller/                  # REST Controller
-    ├── dto/                         # Request / Response
-    └── exception/                   # ExceptionHandler
+project-root/
+├── CLAUDE.md
+├── build.gradle.kts                    # root
+├── settings.gradle.kts                 # 모듈 include
+├── docs/
+│   ├── prd/
+│   ├── adr/
+│   └── architecture/
+├── contracts/                          # 서비스간 공개 계약 (공유 모듈)
+│   ├── build.gradle.kts
+│   ├── src/main/proto/                 # gRPC .proto 정의
+│   │   ├── hotel.proto
+│   │   ├── rate.proto
+│   │   ├── guest.proto
+│   │   └── reservation.proto
+│   └── src/main/java/com/example/contracts/
+│       └── event/                      # Kafka 이벤트 스키마
+├── common-infrastructure/              # 공통 Spring 설정 (공유 모듈)
+│   └── ...
+├── hotel-service/
+│   ├── build.gradle.kts
+│   └── src/main/java/com/example/hotel/
+│       ├── domain/
+│       ├── application/
+│       ├── infrastructure/
+│       └── presentation/
+├── rate-service/
+├── guest-service/
+└── reservation-service/
 ```
 
-테스트도 동일한 패키지 구조를 따릅니다 (`src/test/java/...`).
+### 서비스 모듈 내부 구조 (공통)
 
----
-
-## 5. Claude Code 작업 시 주의사항
-
-### 5.1 작업 시작 시
-- `git status` 로 현재 브랜치와 변경사항을 먼저 확인한다.
-- 새 기능이면 `feature/도메인-기능명` 브랜치를 생성 후 작업한다.
-- 대규모 리팩토링이 필요한 경우 먼저 사용자에게 알리고 ADR 을 제안한다.
-
-### 5.2 코드 수정 시
-- **임의로 의존성(build.gradle) 을 추가하지 않는다.** 필요한 경우 사용자에게 제안한다.
-- 기존 코드 스타일과 네이밍 컨벤션을 우선 따른다.
-- 한 PR 은 **하나의 관심사**만 다룬다. 리팩토링과 기능 추가는 분리한다.
-- `TODO`, `FIXME`, 주석 처리된 코드는 남기지 않는다. 필요하면 별도 이슈로 제안한다.
-
-### 5.3 검증 명령어 (작업 완료 전 반드시 실행)
-```bash
-./gradlew clean build           # 전체 빌드 및 테스트
-./gradlew test                  # 테스트만
-./gradlew test --tests '*Domain*'   # 특정 계층 테스트
-./gradlew check                 # 정적 분석 포함
+```
+<service-name>/
+├── build.gradle.kts
+└── src/
+    ├── main/java/com/example/<service>/
+    │   ├── domain/              # 순수 도메인 (프레임워크 의존 금지)
+    │   │   ├── model/
+    │   │   ├── repository/
+    │   │   ├── service/
+    │   │   ├── event/
+    │   │   └── exception/
+    │   ├── application/         # Use Case
+    │   │   ├── service/
+    │   │   └── dto/
+    │   ├── infrastructure/
+    │   │   ├── persistence/
+    │   │   │   ├── entity/      # XxxJpaEntity (MySQL)
+    │   │   │   ├── repository/
+    │   │   │   └── mapper/
+    │   │   ├── cache/           # Redis (hotel-service의 가용성 뷰 등)
+    │   │   ├── messaging/       # Kafka Producer/Consumer
+    │   │   ├── grpc/
+    │   │   │   ├── server/      # 이 서비스가 노출하는 gRPC 서비스 구현
+    │   │   │   └── client/      # 다른 서비스의 gRPC 호출
+    │   │   └── config/
+    │   └── presentation/        # 외부(클라이언트) HTTP 진입점
+    │       ├── controller/
+    │       ├── dto/
+    │       └── exception/
+    └── test/java/...
 ```
 
-모든 명령이 성공한 뒤에야 커밋/PR 단계로 진행한다.
-
-### 5.4 실패 처리
-- 테스트 실패 시: **절대로 `@Disabled`, `@Ignore`, `assumeTrue(false)` 등으로 회피하지 않는다.** 원인을 분석하고 수정한다.
-- 빌드 실패 시: 경고를 에러로 취급한다 (`-Werror` 수준).
-- 의도적으로 실패하는 테스트가 있다면 사용자에게 사유를 먼저 보고한다.
-
-### 5.5 커뮤니케이션
-- 추측이 필요한 부분은 추측하지 말고 **명확히 질문**한다.
-- 작업 완료 시 다음을 보고한다:
-  - 수정된 파일 목록
-  - 추가된 테스트 개수와 커버리지
-  - 남은 TODO(있다면)
-  - 다음 제안 단계
+**note**: 외부(클라이언트)용 API 는 `presentation/controller/` 의 REST Controller 로, 서비스간 호출은 `infrastructure/grpc/server/` 의 gRPC 서비스로 제공한다.
 
 ---
 
-## 6. 금지 사항 (Hard NO)
+## 모듈 의존성 규칙
 
-아래 사항은 어떠한 이유로도 수행하지 않습니다.
+- ✅ 서비스 모듈 → `contracts`, `common-infrastructure`
+- ❌ 서비스 모듈 → **다른 서비스 모듈** (직접 의존 금지)
+- ❌ `contracts` → 서비스 모듈 (공유 모듈이 서비스를 몰라야 함)
+- ❌ 서비스 모듈 → 다른 서비스의 `domain/` / `infrastructure/` 패키지
 
-- ❌ 도메인 객체에 `@Entity`, `@Table`, `@Column`, `@GeneratedValue` 등 JPA 어노테이션 부착
-- ❌ Controller 에서 Repository 직접 호출 (반드시 Application Service 경유)
-- ❌ Application Service 에서 다른 Application Service 직접 호출 (Domain Service 또는 이벤트로 해결)
-- ❌ 테스트를 건너뛰거나 비활성화
-- ❌ `e.printStackTrace()`, `System.out.println` 등 프로덕션 코드의 디버그 출력
-- ❌ 주석만으로 된 설명("무엇을" 이 아닌 "왜" 를 쓸 것)
-- ❌ 매직 넘버 / 매직 스트링 (상수 또는 enum 사용)
-- ❌ 하나의 커밋에 여러 관심사 혼합 (기능 + 리팩토링 + 포매팅)
-- ❌ 사용자 승인 없는 공개 API 시그니처 변경
+다른 서비스 데이터가 필요하면:
+1. **gRPC 클라이언트 호출** (조회성, 동기) — `infrastructure/grpc/client/` 에 위치
+2. **Kafka 이벤트 구독** (변경 전파, 비동기) — `infrastructure/messaging/` 에 위치
 
----
-
-## 7. 참고 문서
-
-- DDD: Eric Evans, *Domain-Driven Design*
-- Hexagonal Architecture: Alistair Cockburn
-- Clean Architecture: Robert C. Martin
-- 프로젝트 내 ADR: `docs/adr/`
-- 아키텍처 다이어그램: `docs/architecture/`
+상세는 → `.claude/skills/module-boundary/SKILL.md`
 
 ---
 
-**마지막 업데이트**: 2026-04-20
-**적용 범위**: 본 저장소 내 모든 Claude Code 작업
+## 금지 사항
+
+- ❌ **다른 서비스의 DB 에 직접 쿼리 / JOIN**
+- ❌ **다른 서비스의 Domain 객체 / JpaEntity 를 import**
+- ❌ **`contracts` 외의 경로로 서비스간 DTO 공유**
+- ❌ 도메인 객체에 JPA/Spring 어노테이션
+- ❌ Controller 에서 Repository 직접 호출 (Application Service 경유)
+- ❌ Application Service 가 다른 Application Service 직접 호출
+- ❌ 테스트 `@Disabled` / 회피
+- ❌ 한 커밋에 여러 서비스 모듈 변경 혼합 (꼭 필요하면 사용자 승인)
+- ❌ 사용자 승인 없는 공개 API / 이벤트 스키마 변경 (Breaking Change)
+- ❌ 서브 에이전트 리뷰를 건너뛰고 커밋/PR
+
+---
+
+## 작업 규칙
+
+- 작업 시작 시 `git status` 로 브랜치/변경 확인, 새 기능이면 `feature/<service>-<domain>-<action>` 브랜치. 예: `feature/reservation-cancel-api`
+- **build.gradle 의존성을 임의로 추가하지 않는다.** 필요 시 사용자에게 제안.
+- 기존 코드 스타일·네이밍을 우선 따른다.
+- 작업 완료 전 **영향받은 서비스 모듈**을 빌드한다:
+  - 단일 서비스: `./gradlew :hotel-service:build`
+  - 여러 서비스: `./gradlew build`
+- 추측 금지 — 불명확한 부분은 질문한다.
+
+---
+
+## 참고
+
+### 내부
+- 스킬: `.claude/skills/` — 각 단계별 지침 (`module-boundary` 포함)
+- 에이전트: `.claude/agents/` — 독립 컨텍스트 리뷰어
+- PRD: `docs/prd/`
+- ADR: `docs/adr/`
+
+### 외부
+- Eric Evans, *Domain-Driven Design*
+- Vaughn Vernon, *Implementing Domain-Driven Design*
+- Chris Richardson, *Microservices Patterns*
+- OWASP Top 10
+
+---
+
+**마지막 업데이트**: 2026-04-21

@@ -128,7 +128,7 @@ public Optional<Order> findById(OrderId id) { ... }
 ### 사전 요구사항
 - Java 21
 - Docker (Testcontainers 용)
-- PostgreSQL 16 (로컬 또는 Docker)
+- MySQL 8 (로컬 또는 Docker)
 
 ### 실행
 ```bash
