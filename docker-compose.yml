@@ -1,0 +1,286 @@
+name: hotel-reservation
+
+# ═══════════════════════════════════════════════════════════════════
+# ⚠️  LOCAL DEVELOPMENT ONLY — DO NOT DEPLOY TO NON-LOCAL ENVIRONMENTS
+# ═══════════════════════════════════════════════════════════════════
+# 본 파일은 개발자 노트북 위에서만 동작하도록 다음 단순화를 포함한다:
+#   - 모든 포트가 127.0.0.1 에만 바인딩 (외부 네트워크 노출 금지)
+#   - MySQL/Redis/Kafka 모두 PLAINTEXT (TLS · SASL 없음) — 운영은 반드시 TLS
+#   - 4 MySQL 인스턴스가 동일 자격 증명 공유 (로컬 단순화) — 운영은 서비스별 계정 분리
+#   - 인증/인가 미적용 (Plan Q6, 별도 보안 PRD 로 분리)
+# 운영 배포 전 체크리스트는 README.md "운영 배포 전 체크리스트" 섹션 참조.
+#
+# Database per Service 원칙에 따라 MySQL 은 서비스 수만큼 분리 (4 개).
+# Kafka 는 KRaft 단일 브로커 (로컬 기동 단순화).
+# Redis 는 hotel-service 의 RoomAvailabilityView 캐시 용도.
+# 관측 스택 (Prometheus / Grafana) 은 PR-4.3 에서 MSA 구조에 맞춰 재도입 예정.
+
+# 4 개 MySQL 인스턴스의 공통 설정 (command · healthcheck 등)
+# healthcheck 는 app 계정으로 실제 DB 에 접근 가능한지까지 검증해 app 이 `healthy`
+# 를 받고도 connection refused 로 실패하는 사고를 방지한다.
+x-mysql-common: &mysql-common
+  image: mysql:8.0.40
+  restart: unless-stopped
+  command:
+    - --character-set-server=utf8mb4
+    - --collation-server=utf8mb4_unicode_ci
+    - --default-time-zone=+00:00
+  healthcheck:
+    test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u$$MYSQL_USER -e 'SELECT 1' $$MYSQL_DATABASE"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+  networks:
+    - hotel-net
+
+# 4 개 app 서비스의 공통 restart · network 설정
+x-app-common: &app-common
+  restart: unless-stopped
+  networks:
+    - hotel-net
+
+services:
+  # ────────────────────────────────────────────────────────────────
+  # 데이터베이스 (Database per Service)
+  # 4 MySQL 이 같은 MYSQL_USER / MYSQL_PASSWORD 를 쓰는 것은 로컬 단순화 한정.
+  # 운영 환경은 각 DB 별 독립 계정으로 분리할 것 (compose 파일 내 주석 최상단 경고).
+  # ────────────────────────────────────────────────────────────────
+  hotel-db:
+    <<: *mysql-common
+    container_name: hotel-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: hotel
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER must be set}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${HOTEL_DB_PORT:-3307}:3306"
+    volumes:
+      - hotel-db-data:/var/lib/mysql
+
+  rate-db:
+    <<: *mysql-common
+    container_name: rate-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: rate
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER must be set}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${RATE_DB_PORT:-3308}:3306"
+    volumes:
+      - rate-db-data:/var/lib/mysql
+
+  guest-db:
+    <<: *mysql-common
+    container_name: guest-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: guest
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER must be set}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${GUEST_DB_PORT:-3309}:3306"
+    volumes:
+      - guest-db-data:/var/lib/mysql
+
+  reservation-db:
+    <<: *mysql-common
+    container_name: reservation-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: reservation
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER must be set}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${RESERVATION_DB_PORT:-3310}:3306"
+    volumes:
+      - reservation-db-data:/var/lib/mysql
+
+  # ────────────────────────────────────────────────────────────────
+  # 캐시 · 메시지 브로커
+  # ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: hotel-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      - --maxmemory-policy
+      - noeviction
+      - --appendonly
+      - "yes"
+    environment:
+      # healthcheck 의 `redis-cli -a "$$REDIS_PASSWORD"` 치환용. `$$` 는 compose
+      # 이스케이프이며 컨테이너 내부 쉘에서 `$REDIS_PASSWORD` 환경변수로 평가된다.
+      # 컨테이너간 통신에는 app 서비스에 전파된 값을 사용한다.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - hotel-net
+
+  # Kafka (KRaft 단일 브로커). 외부 CLI 접속 포트는 고정 29092 로 정한다 —
+  # 가변화하면 KAFKA_LISTENERS · KAFKA_ADVERTISED_LISTENERS 양쪽 일관 유지가
+  # 번거롭고, broker metadata 응답의 advertised.listeners 가 어긋나면 호스트
+  # 클라이언트가 bootstrap 이후 재연결에 실패한다.
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: hotel-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # 토픽은 각 서비스 구현 시 application layer 에서 명시 생성. 자동 생성은
+      # 스키마 드리프트 원인이 되므로 비활성화.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "127.0.0.1:29092:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - hotel-net
+
+  # ────────────────────────────────────────────────────────────────
+  # 애플리케이션 서비스 (Phase 1 이후 실제 API 구현)
+  # HEALTHCHECK 는 각 서비스 이미지의 Dockerfile 지시어로 처리되므로 compose
+  # 에서 재선언하지 않는다.
+  # ────────────────────────────────────────────────────────────────
+  hotel-service:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: hotel-service
+    image: hotel-reservation/hotel-service:local
+    container_name: hotel-service
+    depends_on:
+      hotel-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://hotel-db:3306/hotel?useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:${HOTEL_SERVICE_PORT:-8081}:8080"
+
+  rate-service:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: rate-service
+    image: hotel-reservation/rate-service:local
+    container_name: rate-service
+    depends_on:
+      rate-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://rate-db:3306/rate?useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:${RATE_SERVICE_PORT:-8082}:8080"
+
+  guest-service:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: guest-service
+    image: hotel-reservation/guest-service:local
+    container_name: guest-service
+    depends_on:
+      guest-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://guest-db:3306/guest?useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:${GUEST_SERVICE_PORT:-8083}:8080"
+
+  reservation-service:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: reservation-service
+    image: hotel-reservation/reservation-service:local
+    container_name: reservation-service
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://reservation-db:3306/reservation?useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:${RESERVATION_SERVICE_PORT:-8084}:8080"
+
+volumes:
+  hotel-db-data:
+  rate-db-data:
+  guest-db-data:
+  reservation-db-data:
+  redis-data:
+  kafka-data:
+
+networks:
+  hotel-net:
+    driver: bridge
