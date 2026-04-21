@@ -176,6 +176,7 @@
 | 파일 | 제공 서비스 | 호출자 | 주요 RPC |
 |---|---|---|---|
 | `guest.proto` | guest-service | reservation-service | `GetGuest`, `BatchGetGuests` |
+| `rate.proto` | rate-service | reservation-service | `GetRoomTypeRate` (예약 생성 시 견적) |
 | `reservation.proto` | reservation-service | hotel-service | `StreamInventory` (캐시 재구축) |
 | `hotel.proto` | hotel-service | (향후) | `GetHotel`, `GetRoomType` |
 
@@ -279,13 +280,15 @@ hotel-service: Room 변경 → RoomCreated/Updated/Deleted 이벤트 발행
 
 | 기능 | hotel | rate | guest | reservation | contracts |
 |---|:---:|:---:|:---:|:---:|:---:|
-| 호텔 등록 | ✅ | | | | 이벤트 |
+| 호텔 등록 | ✅ | | | | - |
 | 객실 등록 | ✅ | | | ✅ (Inventory 생성) | 이벤트 |
+| 객실 삭제 | ✅ | | | ✅ (Inventory 제거) | 이벤트 |
 | 요금 설정 | | ✅ | | | 이벤트 |
 | 투숙객 등록 | | | ✅ | | proto |
-| 예약 생성 | ✅ (캐시 갱신) | ✅ (정산) | ✅ (gRPC, 이력) | ✅ | proto + 이벤트 |
-| 예약 취소 | ✅ (캐시 복원) | | | ✅ | 이벤트 |
-| 가용성 조회 | ✅ | | | ✅ (gRPC 캐시 재구축) | proto |
+| 예약 생성 | ✅ (이벤트 구독 → 캐시 갱신) | ✅ (이벤트 구독 → Billing 생성, gRPC `GetRoomTypeRate` 제공) | ✅ (gRPC `GetGuest` 제공 + 이력 갱신) | ✅ | proto (2) + 이벤트 |
+| 예약 취소 | ✅ (캐시 복원) | ✅ (Billing 취소) | ✅ (이력 롤백) | ✅ | 이벤트 |
+| 가용성 조회 | ✅ | | | | proto (간접) |
+| 캐시 재구축 배치 | ✅ | | | ✅ (`StreamInventory` gRPC 제공) | proto |
 
 ---
 
