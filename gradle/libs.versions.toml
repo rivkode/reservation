@@ -19,6 +19,11 @@ grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 
+# PR-base 추가 — 버전은 Spring Boot BOM 에서 관리되어 별도 version.ref 불요
+jakarta-persistence-api = { module = "jakarta.persistence:jakarta.persistence-api" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
+testcontainers-mysql = { module = "org.testcontainers:mysql" }
+
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "dependency-management" }

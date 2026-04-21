@@ -1,6 +1,15 @@
-server:
-  port: 8082
-
 spring:
   application:
     name: rate-service
+  profiles:
+    default: local
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

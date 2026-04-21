@@ -138,7 +138,7 @@ docker exec -it hotel-kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 --create \
   --topic hotel-events --partitions 3 --replication-factor 1
 ```
-> 토픽은 자동 생성되지 않도록 `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` 로 설정되어 있다. 각 서비스 Application Layer 에서 명시적으로 생성한다 (Phase 2~3).
+> 토픽은 `AUTO_CREATE_TOPICS_ENABLE=false` 이며, docker compose up 시 **`kafka-init` 컨테이너가 자동으로 4개 토픽** (`hotel-events` · `rate-events` · `reservation-events` · `billing-events`) **을 생성** 하고 종료한다. app 컨테이너는 `kafka-init` 완료 후에야 기동된다.
 
 ---
 
@@ -155,20 +155,23 @@ docker compose up -d hotel-db rate-db guest-db reservation-db redis kafka
 > IDE 에서 실행할 서비스는 `application.yml` 의 기본 포트 (hotel=8081 · rate=8082 · guest=8083 · reservation=8084) 를 사용하므로 **동일 포트의 Docker app 컨테이너는 반드시 정지** 해야 한다.
 
 ### 6-2. IDE 에서 서비스 실행
-IntelliJ 등에서 각 서비스의 `XxxServiceApplication.main()` Run 설정에 환경 변수 주입:
+
+각 서비스에는 프로필별 설정 파일이 미리 준비되어 있어 Run 설정은 **프로필 선택만** 으로 충분하다.
+
+| 프로필 | 파일 | 용도 |
+|---|---|---|
+| `local` | `application-local.yml` | IDE 직접 실행 (기본값). 로컬 포트 8081~8084 |
+| `test` | `application-test.yml` | 단위/슬라이스 테스트 (`server.port=0`) |
+| `docker` | `application-docker.yml` | docker compose 내부 (compose env 로 override) |
+| `prod` | `application-prod.yml` | 운영 (Secret Manager 로 주입) |
+
+IntelliJ Run 설정:
 
 ```
 SPRING_PROFILES_ACTIVE=local
-SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3307/hotel?useSSL=false&serverTimezone=UTC
-SPRING_DATASOURCE_USERNAME=reservation
-SPRING_DATASOURCE_PASSWORD=change-me-app
-SPRING_DATA_REDIS_HOST=127.0.0.1
-SPRING_DATA_REDIS_PORT=6379
-SPRING_DATA_REDIS_PASSWORD=change-me-redis
-SPRING_KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:29092
 ```
 
-rate/guest/reservation 서비스도 같은 패턴으로 포트만 교체 (3308/3309/3310).
+> `SPRING_PROFILES_ACTIVE` 미지정 시 `application.yml` 의 `spring.profiles.default: local` 에 의해 local 프로필이 자동 적용된다. DB · Redis · Kafka 연결 정보는 Phase 1 이후 각 서비스의 `application-local.yml` 에 추가되므로, 그 전까지 IDE 실행은 context 로드만 검증 가능.
 
 ### 6-3. 전체 빌드 · 테스트
 ```bash

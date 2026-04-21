@@ -167,10 +167,41 @@ services:
     networks:
       - hotel-net
 
+  # Kafka 가 healthy 가 된 후 한 번 실행돼 4개 토픽을 생성하고 종료한다.
+  # PRD §7.2 의 토픽 네이밍과 파티션 키 전략 (Plan Q4: hotel/rate/reservation-events
+  # 는 hotelId · billing-events 는 reservationId) 을 생성 시점 이후 각 서비스
+  # Producer 측에서 적용. 로컬 단일 브로커 기준 replication-factor=1 · partitions=3.
+  # AUTO_CREATE_TOPICS_ENABLE=false 설정과 쌍을 이룬다.
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: hotel-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - hotel-net
+    restart: "no"
+    command:
+      - bash
+      - -c
+      - |
+        set -eu
+        for topic in hotel-events rate-events reservation-events billing-events; do
+          /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic "$$topic" \
+            --partitions 3 \
+            --replication-factor 1
+        done
+
   # ────────────────────────────────────────────────────────────────
   # 애플리케이션 서비스 (Phase 1 이후 실제 API 구현)
   # HEALTHCHECK 는 각 서비스 이미지의 Dockerfile 지시어로 처리되므로 compose
   # 에서 재선언하지 않는다.
+  # kafka-init 이 성공 종료(exit 0) 한 뒤 app 이 기동되도록 depends_on.condition
+  # 을 service_completed_successfully 로 잠근다 (토픽 없는 상태에서의 Producer
+  # 실패 사전 차단).
   # ────────────────────────────────────────────────────────────────
   hotel-service:
     <<: *app-common
@@ -188,8 +219,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:mysql://hotel-db:3306/hotel?useSSL=false&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
@@ -215,8 +248,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:mysql://rate-db:3306/rate?useSSL=false&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
@@ -239,8 +274,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:mysql://guest-db:3306/guest?useSSL=false&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
@@ -263,8 +300,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:mysql://reservation-db:3306/reservation?useSSL=false&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?MYSQL_USER must be set}
