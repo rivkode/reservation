@@ -1,4 +1,5 @@
 import com.google.protobuf.gradle.id
+import org.gradle.api.artifacts.VersionCatalogsExtension
 
 // 서비스간 공개 계약 모듈.
 // - src/main/proto/ 의 gRPC 서비스 정의를 protoc + protoc-gen-grpc-java 로 컴파일
@@ -9,6 +10,14 @@ plugins {
     `java-library`
     alias(libs.plugins.protobuf)
 }
+
+// protobuf { protoc { artifact = ... } } 블록 안에서는 Kotlin DSL 의
+// `libs.versions.x.get()` typed accessor 가 외부 플러그인 DSL scope 로 전파되지 않는
+// 제약이 있다 (Gradle 8/9 공통). VersionCatalogsExtension API 로 직접 읽어 단일
+// 소스(libs.versions.toml)에서 버전을 관리한다.
+private val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+private val protobufVersion = versionCatalog.findVersion("protobuf").get().requiredVersion
+private val grpcVersion = versionCatalog.findVersion("grpc").get().requiredVersion
 
 dependencies {
     api(libs.protobuf.java)
@@ -26,17 +35,13 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// NOTE: Gradle 9 + protobuf-gradle-plugin 0.9.4 조합에서 protobuf {} 블록 scope 의
-// `libs.versions.*.get()` 이 resolve 되지 않아 (VersionCatalog typed accessor 이슈)
-// 버전 문자열을 직접 박아 사용한다. libs.versions.toml 의 값과 수동으로 싱크를 유지할 것.
-// 라이브러리 의존성(api(libs.protobuf.java) 등)은 영향 없이 카탈로그에서 관리된다.
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.5"
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
     }
     plugins {
         id("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.68.1"
+            artifact = "io.grpc:protoc-gen-grpc-java:$grpcVersion"
         }
     }
     generateProtoTasks {
