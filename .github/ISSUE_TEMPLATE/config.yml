@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion
+    url: https://github.com/rivkode/reservation/discussions
+    about: 설계 방향 · 질문은 Discussion 으로 먼저 올려주세요
