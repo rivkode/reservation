@@ -30,22 +30,61 @@ git status                       # 아직 스테이징 안 된 것
 4. 변경된 파일이 의존하는 인터페이스/상위 클래스
 5. (필요 시) 관련 테스트 파일
 
-### 2. 계층 식별
+### 2. 계층 및 서비스 모듈 식별
 
-각 변경 파일이 어느 계층에 속하는지 먼저 분류합니다.
+각 변경 파일이 **어느 서비스 모듈의 어느 계층**에 속하는지 먼저 분류한다.
 
 | 경로 패턴 | 계층 |
 |---|---|
-| `**/domain/model/**` | Domain - Aggregate/Entity/VO |
-| `**/domain/repository/**` | Domain - Repository Interface |
-| `**/domain/service/**` | Domain - Domain Service |
-| `**/domain/event/**` | Domain - Event |
-| `**/application/**` | Application |
-| `**/infrastructure/persistence/entity/**` | Infrastructure - JPA Entity |
-| `**/infrastructure/persistence/repository/**` | Infrastructure - Repository Impl |
-| `**/infrastructure/persistence/mapper/**` | Infrastructure - Mapper |
-| `**/presentation/controller/**` | Presentation - Controller |
-| `**/presentation/dto/**` | Presentation - DTO |
+| `<service>/**/domain/model/**` | Domain - Aggregate/Entity/VO |
+| `<service>/**/domain/repository/**` | Domain - Repository Interface |
+| `<service>/**/domain/service/**` | Domain - Domain Service / 외부 연동 인터페이스 |
+| `<service>/**/domain/event/**` | Domain - Event |
+| `<service>/**/application/**` | Application |
+| `<service>/**/infrastructure/persistence/entity/**` | Infrastructure - JPA Entity |
+| `<service>/**/infrastructure/persistence/repository/**` | Infrastructure - Repository Impl |
+| `<service>/**/infrastructure/persistence/mapper/**` | Infrastructure - Mapper |
+| `<service>/**/infrastructure/messaging/**` | Infrastructure - Kafka Producer/Consumer |
+| `<service>/**/infrastructure/grpc/server/**` | Infrastructure - gRPC 서비스 제공 |
+| `<service>/**/infrastructure/grpc/client/**` | Infrastructure - gRPC 클라이언트 (다른 서비스 호출) |
+| `<service>/**/infrastructure/cache/**` | Infrastructure - Redis (Read Model 등) |
+| `<service>/**/presentation/controller/**` | Presentation - Controller |
+| `<service>/**/presentation/dto/**` | Presentation - DTO |
+| `contracts/**` | 공유 계약 (이벤트/공개 DTO) |
+| `common-infrastructure/**` | 공통 인프라 설정 |
+
+### 2.1 서비스 경계 선결 검사 (Critical 조기 발견)
+
+계층 체크 전에 **서비스 경계 위반**을 먼저 검사한다. 위반 발견 시 즉시 Critical.
+
+- [ ] 어떤 서비스의 코드가 **다른 서비스의 내부 패키지**를 import 하지 않는가?
+  예: `reservation-service` 에서 `com.example.hotel.domain.*` 또는 `com.example.guest.infrastructure.*` import → Critical
+- [ ] 다른 서비스 호출은 **Domain 인터페이스로 래핑**되고, gRPC 클라이언트는 `infrastructure/grpc/client/` 에만 있는가?
+- [ ] **gRPC 호출에 `withDeadlineAfter(...)` Deadline 이 설정되어 있는가?** (없으면 Critical)
+- [ ] **gRPC 호출에 `@CircuitBreaker` + `@Retry` 가 적용되어 있는가?**
+- [ ] gRPC 서비스 구현(`@GrpcService`)은 `infrastructure/grpc/server/` 에만 있는가?
+- [ ] proto 생성 클래스를 Domain / Application 에서 import 하지 않는가? (Infrastructure 에서만 변환)
+- [ ] 새로운 Kafka Consumer 는 **멱등성 처리**(`ProcessedEvent` 체크)가 있는가?
+- [ ] 새로운 Kafka Producer 는 **Outbox 패턴**으로 발행하는가? (MySQL 트랜잭션 원자성)
+- [ ] `contracts/event/` 새 타입에 `eventId`, `occurredAt` 필수 필드가 있는가?
+- [ ] `contracts` 에 Spring / JPA 어노테이션이 들어가지 않았는가?
+- [ ] Redis Read Model 과 MySQL Aggregate 이름이 명확히 구분되는가? (`Inventory` vs `AvailabilityView`)
+
+```bash
+# 서비스 경계 침범 검사
+grep -rn "import com.example.hotel\." src/main/java/ | grep -v "com.example.hotel.src"
+grep -rn "import com.example.guest\." src/main/java/
+grep -rn "import com.example.rate\." src/main/java/
+
+# contracts 에 Spring 침투 검사
+grep -rn "org.springframework\|jakarta.persistence" contracts/src/main/java/
+
+# Deadline 누락 검사 (gRPC 호출)
+grep -rn "BlockingStub\b" src/main/java/ | grep -v "withDeadlineAfter"
+
+# proto 클래스가 Domain/Application 에 침투했는지
+grep -rn "import com.example.contracts.proto" src/main/java/*/domain/ src/main/java/*/application/
+```
 
 계층별로 다른 체크리스트를 적용합니다.
 
@@ -98,6 +137,7 @@ grep -rn "public void set[A-Z]" src/main/java/**/domain/model/
 - [ ] `Clock` 을 주입받아 `Instant.now(clock)` 사용 (직접 `LocalDateTime.now()` 호출 금지)
 - [ ] Application Service가 다른 Application Service를 직접 호출하지 않는가?
 - [ ] 비즈니스 규칙이 Domain으로 위임되어 있고 Service가 **얇은가**?
+- [ ] 외부 시스템 호출이 Domain 인터페이스를 거쳐 Infrastructure가 구현하는가?
 - [ ] Domain 객체가 반환값으로 노출되지 않는가? (Result DTO로 변환)
 - [ ] 이벤트 발행이 `save()` 이후에 일어나는가?
 

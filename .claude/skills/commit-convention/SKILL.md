@@ -111,7 +111,7 @@ test(order): ...          # 주문 테스트
 ```
 ✅ feat(order): 주문 취소 API 추가
 ✅ fix(order): SHIPPED 상태 취소 시 400 반환
-✅ refactor(payment): PaymentGateway 를 Port 인터페이스로 분리
+✅ refactor(payment): PaymentGateway 를 Domain 인터페이스로 분리
 
 ❌ feat(order): 오늘 주문 취소 기능을 새로 구현했습니다.   (길고, 과거형, 마침표)
 ❌ fix: 버그 수정                                         (무엇을 수정했는지 모름)
