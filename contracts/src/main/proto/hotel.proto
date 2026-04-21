@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package com.reservation.contracts.hotel;
+
+option java_multiple_files = true;
+option java_package = "com.reservation.contracts.hotel";
+option java_outer_classname = "HotelProto";
+
+// hotel-service 가 제공. PRD §7.1 에 "(향후)" 로 기재되어 있어 현재 호출자는 없으나
+// 계약을 선정의해 두어 이후 다른 서비스가 추가될 때 서비스 경계를 흔들지 않는다.
+service HotelQueryService {
+  rpc GetHotel(GetHotelRequest) returns (Hotel);
+  rpc GetRoomType(GetRoomTypeRequest) returns (RoomType);
+}
+
+message Hotel {
+  string id = 1;
+  string name = 2;
+  string address = 3;
+  int32 star_rating = 4;
+}
+
+message GetHotelRequest {
+  string id = 1;
+}
+
+message RoomType {
+  string id = 1;
+  string hotel_id = 2;
+  string name = 3;
+  int32 max_occupancy = 4;
+}
+
+message GetRoomTypeRequest {
+  string id = 1;
+}
