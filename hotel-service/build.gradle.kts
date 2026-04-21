@@ -10,5 +10,6 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(testFixtures(project(":common-infrastructure")))
     testRuntimeOnly(libs.junit.platform.launcher)
 }
