@@ -25,7 +25,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,7 +43,7 @@ class HotelControllerTest {
     Clock clock;
 
     @Test
-    @DisplayName("POST /api/v1/hotels: 201 + Location 헤더 + body")
+    @DisplayName("POST /api/v1/hotels: 201 + CommonResponse 래퍼 body")
     void registerReturns201() throws Exception {
         HotelResult result = new HotelResult("id-1", "A", "1 St", "Seoul", "KR", 4, Set.of("WIFI"));
         when(service.register(any())).thenReturn(result);
@@ -56,9 +55,8 @@ class HotelControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsBytes(request)))
             .andExpect(status().isCreated())
-            .andExpect(header().string("Location", "/api/v1/hotels/id-1"))
-            .andExpect(jsonPath("$.id").value("id-1"))
-            .andExpect(jsonPath("$.address.city").value("Seoul"));
+            .andExpect(jsonPath("$.data.id").value("id-1"))
+            .andExpect(jsonPath("$.data.address.city").value("Seoul"));
     }
 
     @Test

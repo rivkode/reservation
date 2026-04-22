@@ -12,6 +12,7 @@ import com.reservation.hotel.domain.model.RoomTypeId;
 import com.reservation.hotel.domain.model.RoomTypeName;
 import com.reservation.hotel.domain.repository.HotelRepository;
 import com.reservation.hotel.domain.repository.RoomTypeRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,19 +25,12 @@ import java.util.Objects;
  * condition 을 이중 방어한다. RoomType 삭제는 본 PR 범위 외 (PRD FR 명시 없음).
  */
 @Service
+@RequiredArgsConstructor
 public class RoomTypeApplicationService {
 
     private final RoomTypeRepository roomTypeRepository;
     private final HotelRepository hotelRepository;
     private final Clock clock;
-
-    public RoomTypeApplicationService(RoomTypeRepository roomTypeRepository,
-                                      HotelRepository hotelRepository,
-                                      Clock clock) {
-        this.roomTypeRepository = Objects.requireNonNull(roomTypeRepository, "roomTypeRepository");
-        this.hotelRepository = Objects.requireNonNull(hotelRepository, "hotelRepository");
-        this.clock = Objects.requireNonNull(clock, "clock");
-    }
 
     @Transactional
     public RoomTypeResult register(RegisterRoomTypeCommand command) {

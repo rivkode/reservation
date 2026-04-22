@@ -7,19 +7,17 @@ import com.reservation.hotel.domain.model.RoomTypeName;
 import com.reservation.hotel.domain.repository.RoomTypeRepository;
 import com.reservation.hotel.infrastructure.persistence.entity.RoomTypeJpaEntity;
 import com.reservation.hotel.infrastructure.persistence.mapper.RoomTypeJpaMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
+@RequiredArgsConstructor
 public class RoomTypeRepositoryImpl implements RoomTypeRepository {
 
     private final RoomTypeJpaRepository jpaRepository;
-
-    public RoomTypeRepositoryImpl(RoomTypeJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
-    }
 
     @Override
     public RoomType save(RoomType roomType) {

@@ -1,9 +1,8 @@
 package com.reservation.common.messaging.outbox;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -37,9 +36,8 @@ import java.util.concurrent.TimeUnit;
  *       trace 를 엮을 예정. 현재는 파라미터 binding 로깅만.</li>
  * </ul>
  */
+@Slf4j
 public class OutboxRelay {
-
-    private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
 
     static final String HEADER_EVENT_TYPE = "event-type";
     static final String HEADER_EVENT_ID = "event-id";

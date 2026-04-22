@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reservation.common.domain.UuidV7;
 import com.reservation.contracts.event.DomainEvent;
+import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +25,12 @@ import java.util.Objects;
  *
  * <p>Kafka 실 발행은 별도 스케줄러인 {@link OutboxRelay} 가 담당.
  */
+@RequiredArgsConstructor
 public class OutboxEventPublisher {
 
     private final OutboxRepository repository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
-
-    public OutboxEventPublisher(OutboxRepository repository, ObjectMapper objectMapper, Clock clock) {
-        this.repository = Objects.requireNonNull(repository, "repository");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
-        this.clock = Objects.requireNonNull(clock, "clock");
-    }
 
     /**
      * 도메인 이벤트를 Outbox 에 저장한다.

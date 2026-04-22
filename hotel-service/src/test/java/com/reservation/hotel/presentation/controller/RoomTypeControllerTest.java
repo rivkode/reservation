@@ -28,7 +28,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -47,7 +46,7 @@ class RoomTypeControllerTest {
     Clock clock;
 
     @Test
-    @DisplayName("POST /api/v1/room-types: 201 + Location")
+    @DisplayName("POST /api/v1/room-types: 201 + CommonResponse 래퍼")
     void registerReturns201() throws Exception {
         RoomTypeResult result = new RoomTypeResult("rt-1", "h-1", "Standard", 2);
         when(service.register(any())).thenReturn(result);
@@ -57,8 +56,7 @@ class RoomTypeControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsBytes(new RegisterRoomTypeRequest("h-1", "Standard", 2))))
             .andExpect(status().isCreated())
-            .andExpect(header().string("Location", "/api/v1/room-types/rt-1"))
-            .andExpect(jsonPath("$.id").value("rt-1"));
+            .andExpect(jsonPath("$.data.id").value("rt-1"));
     }
 
     @Test
@@ -91,7 +89,7 @@ class RoomTypeControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/room-types?hotelId=: 리스트 반환")
+    @DisplayName("GET /api/v1/room-types?hotelId=: 리스트 반환 (data 내부에 배열)")
     void listByHotelReturnsOk() throws Exception {
         when(service.listByHotel(anyString())).thenReturn(List.of(
             new RoomTypeResult("rt-1", "h-1", "Standard", 2),
@@ -100,7 +98,7 @@ class RoomTypeControllerTest {
 
         mockMvc.perform(get("/api/v1/room-types").param("hotelId", "h-1"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(2))
-            .andExpect(jsonPath("$[1].name").value("Deluxe"));
+            .andExpect(jsonPath("$.data.length()").value(2))
+            .andExpect(jsonPath("$.data[1].name").value("Deluxe"));
     }
 }

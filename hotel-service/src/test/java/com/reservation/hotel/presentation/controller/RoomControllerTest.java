@@ -38,7 +38,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,7 +56,7 @@ class RoomControllerTest {
     Clock clock;
 
     @Test
-    @DisplayName("POST /api/v1/rooms: 201 + Location + body")
+    @DisplayName("POST /api/v1/rooms: 201 + CommonResponse 래퍼 body")
     void registerReturns201() throws Exception {
         RoomResult result = new RoomResult("room-1", "h-1", "rt-1", 3, "301", "ACTIVE");
         when(service.register(any())).thenReturn(result);
@@ -69,9 +68,8 @@ class RoomControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsBytes(request)))
             .andExpect(status().isCreated())
-            .andExpect(header().string("Location", "/api/v1/rooms/room-1"))
-            .andExpect(jsonPath("$.id").value("room-1"))
-            .andExpect(jsonPath("$.status").value("ACTIVE"));
+            .andExpect(jsonPath("$.data.id").value("room-1"))
+            .andExpect(jsonPath("$.data.status").value("ACTIVE"));
     }
 
     @Test
@@ -120,16 +118,17 @@ class RoomControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsBytes(request)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.roomTypeId").value("rt-2"));
+            .andExpect(jsonPath("$.data.roomTypeId").value("rt-2"));
     }
 
     @Test
-    @DisplayName("DELETE /api/v1/rooms/{id}: 204 No Content")
-    void deactivateReturns204() throws Exception {
+    @DisplayName("DELETE /api/v1/rooms/{id}: 200 + null data")
+    void deactivateReturns200() throws Exception {
         doNothing().when(service).deactivate(anyString());
 
         mockMvc.perform(delete("/api/v1/rooms/room-1"))
-            .andExpect(status().isNoContent());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -156,4 +155,7 @@ class RoomControllerTest {
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value("INVALID_ROOM_STATE_TRANSITION"));
     }
+
+    // 에러 응답은 ErrorResponse (top-level $.code/$.status) 로 내려가고 CommonResponse 래퍼를
+    // 쓰지 않는다. 위 404/409 테스트들의 jsonPath 가 "$.code" 를 직접 보는 이유가 그것이다.
 }

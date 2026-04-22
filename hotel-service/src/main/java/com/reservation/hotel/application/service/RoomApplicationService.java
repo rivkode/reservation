@@ -23,6 +23,7 @@ import com.reservation.hotel.domain.model.RoomTypeId;
 import com.reservation.hotel.domain.repository.HotelRepository;
 import com.reservation.hotel.domain.repository.RoomRepository;
 import com.reservation.hotel.domain.repository.RoomTypeRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +50,7 @@ import java.util.Objects;
  * 보장 (consumer 측 Redis 캐시 일관성).
  */
 @Service
+@RequiredArgsConstructor
 public class RoomApplicationService {
 
     private static final String HOTEL_EVENTS_TOPIC = "hotel-events";
@@ -58,18 +60,6 @@ public class RoomApplicationService {
     private final HotelRepository hotelRepository;
     private final OutboxEventPublisher outboxEventPublisher;
     private final Clock clock;
-
-    public RoomApplicationService(RoomRepository roomRepository,
-                                  RoomTypeRepository roomTypeRepository,
-                                  HotelRepository hotelRepository,
-                                  OutboxEventPublisher outboxEventPublisher,
-                                  Clock clock) {
-        this.roomRepository = Objects.requireNonNull(roomRepository, "roomRepository");
-        this.roomTypeRepository = Objects.requireNonNull(roomTypeRepository, "roomTypeRepository");
-        this.hotelRepository = Objects.requireNonNull(hotelRepository, "hotelRepository");
-        this.outboxEventPublisher = Objects.requireNonNull(outboxEventPublisher, "outboxEventPublisher");
-        this.clock = Objects.requireNonNull(clock, "clock");
-    }
 
     @Transactional
     public RoomResult register(RegisterRoomCommand command) {

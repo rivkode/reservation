@@ -3,8 +3,8 @@ package com.reservation.hotel.infrastructure.persistence.repository;
 import com.reservation.common.messaging.outbox.OutboxMessage;
 import com.reservation.common.messaging.outbox.OutboxRepository;
 import com.reservation.hotel.infrastructure.persistence.entity.HotelOutboxJpaEntity;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -24,15 +24,11 @@ import java.util.UUID;
  * {@code IllegalTransactionStateException} 으로 실패해 개발 타임에 드러나게 한다.
  */
 @Repository
+@RequiredArgsConstructor
+@Slf4j
 public class HotelOutboxRepositoryImpl implements OutboxRepository {
 
-    private static final Logger log = LoggerFactory.getLogger(HotelOutboxRepositoryImpl.class);
-
     private final HotelOutboxJpaRepository jpaRepository;
-
-    public HotelOutboxRepositoryImpl(HotelOutboxJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
-    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)

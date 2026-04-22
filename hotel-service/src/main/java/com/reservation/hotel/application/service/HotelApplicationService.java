@@ -10,6 +10,7 @@ import com.reservation.hotel.domain.model.HotelId;
 import com.reservation.hotel.domain.model.HotelName;
 import com.reservation.hotel.domain.model.StarRating;
 import com.reservation.hotel.domain.repository.HotelRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +27,11 @@ import java.util.stream.Collectors;
  * 이벤트를 남기지 않는다. Room 변경은 {@code RoomApplicationService} 가 발행한다.
  */
 @Service
+@RequiredArgsConstructor
 public class HotelApplicationService {
 
     private final HotelRepository hotelRepository;
     private final Clock clock;
-
-    public HotelApplicationService(HotelRepository hotelRepository, Clock clock) {
-        this.hotelRepository = Objects.requireNonNull(hotelRepository, "hotelRepository");
-        this.clock = Objects.requireNonNull(clock, "clock");
-    }
 
     @Transactional
     public HotelResult register(RegisterHotelCommand command) {

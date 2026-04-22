@@ -10,8 +10,8 @@ import com.reservation.hotel.domain.exception.RoomNotFoundException;
 import com.reservation.hotel.domain.exception.RoomTypeHotelMismatchException;
 import com.reservation.hotel.domain.exception.RoomTypeNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,15 +25,11 @@ import java.util.List;
  * 원인을 남긴다. Dev/Ops 가 원인 추적 시 로그의 {@code code} 를 사용한다.
  */
 @RestControllerAdvice
+@RequiredArgsConstructor
+@Slf4j
 public class HotelExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(HotelExceptionHandler.class);
-
     private final Clock clock;
-
-    public HotelExceptionHandler(Clock clock) {
-        this.clock = clock;
-    }
 
     @ExceptionHandler(HotelNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleHotelNotFound(HotelNotFoundException e, HttpServletRequest req) {
