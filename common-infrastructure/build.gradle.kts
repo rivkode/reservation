@@ -41,6 +41,14 @@ dependencies {
     // UuidV7 유틸이 thin wrapper 로 노출.
     api(libs.java.uuid.generator)
 
+    // Outbox 유틸이 contracts 의 DomainEvent 타입을 받아 직렬화한다.
+    // common-infra → contracts 는 허용되는 방향 (contracts 는 순수 계약 · 하위 레이어).
+    api(project(":contracts"))
+
+    // Outbox relay 가 KafkaTemplate 으로 직접 발행. 타입이 public API (relay bean 을
+    // 서비스가 override 할 여지) 라 api 로 노출.
+    api(libs.spring.kafka)
+
     // Jackson 공용 설정 (JacksonConfig) 이 Jackson2ObjectMapperBuilder 타입 · JavaTimeModule ·
     // ObjectMapper 를 모두 참조한다. starter-json 은 spring-web 의 Jackson2ObjectMapperBuilder
     // 와 jackson-databind · jackson-datatype-jsr310 · parameter-names 를 한 번에 제공한다.
