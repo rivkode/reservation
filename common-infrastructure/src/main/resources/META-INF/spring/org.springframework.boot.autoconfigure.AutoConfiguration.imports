@@ -1,2 +1,3 @@
 com.reservation.common.config.ClockConfig
 com.reservation.common.json.JacksonConfig
+com.reservation.common.messaging.outbox.OutboxAutoConfiguration

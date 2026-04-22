@@ -16,8 +16,18 @@ service HotelQueryService {
 message Hotel {
   string id = 1;
   string name = 2;
-  string address = 3;
+  // 검색 · 필터 (도시/국가) 요구(FR-H-02)를 위해 구조화된 주소. ddd-architect
+  // C1 결정에 따라 단일 string → HotelAddress nested message 로 확장.
+  // HotelQueryService 에 아직 호출자가 없어 wire-compat breaking 영향 없음.
+  HotelAddress address = 3;
   int32 star_rating = 4;
+}
+
+message HotelAddress {
+  string street = 1;
+  string city = 2;
+  // ISO-3166 국가 코드 권장 (추후 CountryCode VO 로 래핑 고려 — .github/docs 참조)
+  string country = 3;
 }
 
 message GetHotelRequest {

@@ -20,6 +20,7 @@ grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
+spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
 
 # PR-base 추가 — 버전은 Spring Boot BOM 에서 관리되어 별도 version.ref 불요
 jakarta-persistence-api = { module = "jakarta.persistence:jakarta.persistence-api" }
