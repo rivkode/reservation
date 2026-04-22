@@ -1,0 +1,5 @@
+server:
+  port: 8080
+
+# docker-compose 가 환경변수로 인프라 연결 정보를 주입한다. 본 파일은 profile 을
+# 활성화하기 위한 placeholder 이며 기본값을 두지 않는다.

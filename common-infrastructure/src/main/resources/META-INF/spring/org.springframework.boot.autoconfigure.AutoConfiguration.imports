@@ -1,1 +1,2 @@
 com.reservation.common.config.ClockConfig
+com.reservation.common.json.JacksonConfig

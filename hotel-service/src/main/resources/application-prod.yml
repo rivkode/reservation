@@ -1,0 +1,5 @@
+server:
+  port: 8080
+
+# 운영 환경 변수는 Vault / AWS Secrets Manager 등으로 주입한다.
+# 본 파일에는 기본값을 두지 않으며, 변경은 별도 보안 PRD · 운영 체크리스트 참조.

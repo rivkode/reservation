@@ -1,0 +1,4 @@
+server:
+  port: 8080
+
+# 운영 환경 변수는 Vault / AWS Secrets Manager 등으로 주입. 기본값 없음.

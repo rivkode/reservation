@@ -1,0 +1,7 @@
+server:
+  port: 8084
+
+# IDE 에서 직접 실행하는 로컬 프로파일.
+# docker compose 는 인프라 (mysql · kafka) 만 기동하고, 동일 포트의 app
+# 컨테이너 (reservation-service = 8084) 는 반드시 정지한 상태에서 사용한다.
+# (README §6-1 참조)
