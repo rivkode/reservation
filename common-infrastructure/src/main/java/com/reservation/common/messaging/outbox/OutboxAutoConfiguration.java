@@ -15,18 +15,18 @@ import java.time.Clock;
 /**
  * Outbox 패턴 유틸(공용) 자동 구성.
  *
- * <p>소비 서비스가 (a) {@link OutboxRepository} 빈 (spring-data-jpa 구현) 과
- * (b) {@link KafkaTemplate} 빈 (spring-kafka 설정) 을 **둘 다** 제공할 때만 본
- * 자동구성이 {@link OutboxEventPublisher} 와 {@link OutboxRelay} 를 등록한다.
- * 한쪽만 있으면 두 빈 모두 등록되지 않는다 (publisher 만 살면 DB 쓰기는 되지만
- * 영원히 발행되지 않는 사일런트 실패를 피하기 위함).
+ * <p>{@link OutboxEventPublisher} 는 {@link OutboxRepository} 빈이 존재하면 등록되고,
+ * {@link OutboxRelay} 는 추가로 {@link KafkaTemplate} 빈이 존재할 때만 등록된다.
+ * 이렇게 분리해 테스트 환경(실제 Kafka 미기동)에서 publisher 만이라도 Application
+ * Service 주입이 가능하게 한다. Relay 가 없으면 DB 적재만 되고 발행은 되지 않아
+ * 로컬 단위 테스트의 assertion 에는 영향이 없다.
  *
  * <p>{@code @EnableScheduling} 으로 relay 의 {@code @Scheduled} 를 활성화한다.
  * 소비 서비스가 별도 스케줄링 설정을 가질 경우 충돌 없이 병존한다.
  */
 @AutoConfiguration
-@ConditionalOnClass({KafkaTemplate.class, OutboxRepository.class})
-@ConditionalOnBean({OutboxRepository.class, KafkaTemplate.class})
+@ConditionalOnClass(OutboxRepository.class)
+@ConditionalOnBean(OutboxRepository.class)
 @EnableScheduling
 public class OutboxAutoConfiguration {
 
@@ -39,6 +39,8 @@ public class OutboxAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnClass(KafkaTemplate.class)
+    @ConditionalOnBean(KafkaTemplate.class)
     @ConditionalOnMissingBean
     public OutboxRelay outboxRelay(
         OutboxRepository repository,

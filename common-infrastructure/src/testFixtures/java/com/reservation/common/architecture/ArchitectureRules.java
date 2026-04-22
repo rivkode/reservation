@@ -53,6 +53,12 @@ public final class ArchitectureRules {
         // 비어 있어도 규칙이 통과해야 하므로 각 layer 를 optional 로 선언한다.
         // Phase 3 이후 레이어들이 안정적으로 채워지면 서비스별 override 로
         // `false` 전환 검토. 비어 있더라도 의존 방향 규칙은 그대로 enforce 된다.
+        //
+        // Presentation 의 @RestControllerAdvice 가 도메인 예외를 catch 해야 하는
+        // 예외적 사정을 위해 Presentation → Domain 접근을 허용하되, 그 범위는
+        // 반드시 domain.exception 으로 한정한다. 이 폭이 일반 Domain AR · VO 까지
+        // 넓어지지 않도록 {@link #presentationOnlyAccessesDomainExceptions} 가
+        // 별도로 enforce 한다.
         return layeredArchitecture()
             .consideringOnlyDependenciesInLayers()
             .layer("Domain").definedBy(basePackage + ".domain..")
@@ -62,8 +68,22 @@ public final class ArchitectureRules {
             .whereLayer("Presentation").mayNotBeAccessedByAnyLayer()
             .whereLayer("Infrastructure").mayNotBeAccessedByAnyLayer()
             .whereLayer("Application").mayOnlyBeAccessedByLayers("Presentation", "Infrastructure")
-            .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Infrastructure")
+            .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Infrastructure", "Presentation")
             .withOptionalLayers(true);
+    }
+
+    /**
+     * Presentation 이 Domain 을 참조할 때는 {@code domain.exception..} 서브패키지만
+     * 허용한다. AR · VO · Repository 등 그 외 Domain 내부 타입은 Application Service
+     * 를 통해서만 접근해야 한다.
+     */
+    public static ArchRule presentationOnlyAccessesDomainExceptions(String basePackage) {
+        return noClasses()
+            .that().resideInAPackage(basePackage + ".presentation..")
+            .should().dependOnClassesThat(
+                resideInAPackage(basePackage + ".domain..")
+                    .and(resideOutsideOfPackages(basePackage + ".domain.exception..")))
+            .because("Presentation 은 domain.exception 만 직접 import 가능; AR · VO 는 Application Service 경유");
     }
 
     /**
