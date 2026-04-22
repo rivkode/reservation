@@ -1,5 +1,25 @@
 server:
   port: 8080
 
-# docker-compose 가 환경변수로 인프라 연결 정보를 주입한다. 본 파일은 profile 을
-# 활성화하기 위한 placeholder 이며 기본값을 두지 않는다.
+# docker-compose 가 환경변수(SPRING_DATASOURCE_URL · SPRING_KAFKA_BOOTSTRAP_SERVERS
+# 등) 로 인프라 연결 정보를 주입한다. 본 파일은 컨테이너 환경 기본값(ddl-auto ·
+# flyway 위치 등) 만 선언한다.
+spring:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+app:
+  outbox:
+    poll-delay-ms: 1000
+    batch-size: 100
+    send-timeout-ms: 5000
