@@ -214,6 +214,91 @@ project-root/
 
 ---
 
+## 서비스 구현 규약 (hotel-service PR-1.1b 이후 고정)
+
+모든 서비스 모듈(rate-service · guest-service · reservation-service) 은 아래 규약을 **동일하게** 따른다. hotel-service 에서 재작업 비용을 치른 결정이므로 이후 서비스는 처음부터 맞춘다.
+
+### Lombok — Spring bean 계열
+- `@Service` · `@Repository` · `@RestController` · `@RestControllerAdvice` · `@Configuration(bean 주입형)` 는 **`@RequiredArgsConstructor`** 로 생성자를 만든다.
+- SLF4J 로거 선언은 **`@Slf4j`** 로 대체. `private static final Logger log = LoggerFactory.getLogger(...)` 를 수동 선언하지 않는다.
+- Spring DI 가 비-null 을 보장하므로 생성자 주입 필드에 대한 `Objects.requireNonNull(...)` 은 **붙이지 않는다**. (값 인자 검증은 유지 — 예: `command`, `id` 등 메서드 파라미터)
+- **예외 — 수동 생성자가 필요한 경우**:
+  - 다수 오버로드 생성자 (`OutboxRelay` 처럼 default 값 분기용)
+  - 생성자 내부에서 인자 범위 검증 (예: `if (batchSize <= 0) throw ...`)
+  - 이때도 `@Slf4j` 는 적용한다.
+- 도메인 계층(Aggregate · VO · Domain Exception) 은 **Lombok 금지**. 불변식 검증 로직과 명시적 팩토리 메서드가 핵심이라 `@RequiredArgsConstructor` 가 오히려 해롭다. `@Getter` 도 붙이지 않는다 — 접근자 이름을 도메인 언어로 짓는다 (예: `id()`, `name()`).
+
+### 응답 포맷 — CommonResponse<T>
+- 모든 REST 성공 응답은 `com.reservation.common.presentation.CommonResponse<T>` 로 감싼다. 본문은 항상 `{ "data": <payload> }` 형태.
+- HTTP status 는 `ResponseEntity.status(...)` 로만 지정:
+  - 생성: `ResponseEntity.status(HttpStatus.CREATED).body(CommonResponse.of(...))`
+  - 조회/수정: `ResponseEntity.ok(CommonResponse.of(...))`
+  - 삭제 · 비우기: `ResponseEntity.ok(CommonResponse.of(null))` (204 NoContent 대신 200 + `data=null`)
+- **`Location` 헤더 · URI 빌더를 사용하지 않는다**. 생성 결과도 body 의 `data` 로만 전달.
+- 에러 응답은 `ErrorResponse` (common-infrastructure) 로 별도 포맷을 유지한다 — `CommonResponse` 로 감싸지 않는다. `@RestControllerAdvice` 가 직접 `ErrorResponse` 를 반환.
+- `@WebMvcTest` 에서 성공 응답은 `$.data.*` 경로로, 에러 응답은 `$.code` / `$.status` 로 assert 한다.
+
+### 컨트롤러 구조
+```java
+@RestController
+@RequestMapping("/api/v1/<리소스>")
+@RequiredArgsConstructor
+public class XxxController {
+
+    private final XxxApplicationService service;
+
+    @PostMapping
+    public ResponseEntity<CommonResponse<XxxResponse>> register(@RequestBody RegisterXxxRequest request) {
+        XxxResult result = service.register(request.toCommand());
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(CommonResponse.of(XxxResponse.of(result)));
+    }
+}
+```
+
+### Presentation 의존성 (선택 — 향후 별도 PR)
+- `jakarta.validation` (`@NotBlank`, `@Min`, `@Valid`) 은 아직 도입하지 않는다. 입력 검증은 도메인 VO (`HotelName`, `StarRating` 등) 가 수행하고 `IllegalArgumentException` → 400 으로 매핑. `validation-starter` 도입은 별도 PR 승인 후.
+
+### 참고 구현
+- `hotel-service` PR-1.1b 전체 — Controller · Service · Repository · ExceptionHandler 의 실제 예시.
+- `common-infrastructure/src/main/java/com/reservation/common/presentation/CommonResponse.java`
+
+---
+
+## 컨텍스트 최적화 (Claude Code 세션 운영)
+
+본 저장소는 PR 단위 개발이 크고(1 PR ≈ 100k+ 토큰 소모) MSA 전체를 한 세션에서 진행하면 컨텍스트가 빠르게 소진된다. 다음 규칙을 지켜 품질 저하를 예방한다.
+
+### 세션 분리
+- **PR 머지 직후 `/clear` 로 세션 리셋**. 새 세션은 한 줄 복귀로 충분 — 예: "PR #11 merged. `docs/prd/...` 기반으로 PR-1.2 착수".
+- CLAUDE.md · MEMORY.md · plan 파일은 매 세션 자동 로드되므로 도메인 지식 · 결정사항 · 진행 상황은 보존된다.
+- 한 세션에 **최대 1~2 PR** 을 상한으로 한다. 그 이상이면 후반부 응답 품질이 떨어진다.
+
+### 서브에이전트 결과 처리
+- code-reviewer · test-reviewer · ddd-architect 등의 반환 전문(全文)을 대화 맥락에 남기지 않는다.
+- **판정(APPROVED / NEEDS CHANGES / REJECT) + Critical · High 지적 요약** 만 보존하고 세부 근거는 리뷰 보고서(원한다면 `docs/reviews/` 에 파일로) 로 옮긴다.
+- 다음 세션에서는 "code-reviewer: NEEDS CHANGES → Critical 2건 반영 후 APPROVE" 수준의 한 줄 요약만 있으면 충분.
+
+### 디버깅 로그 정리
+- 빌드 실패 · 테스트 실패 시의 `stdout/stderr` 와 HTML report grep 결과는 **원인 파악 직후 요약** 으로 압축한다.
+- "Schema-validation: star_rating TINYINT vs INT" 같은 한 줄 원인만 남기고 스택트레이스는 버린다.
+- 같은 파일을 여러 번 Read 하지 말 것. Edit 전 한 번만 필요한 범위로 읽는다.
+
+### Plan · PRD 참조
+- Plan 문서(`~/.claude/plans/...`)는 세션 시작 시 한 번만 로드하면 충분하며 중간에 전문을 재인용하지 않는다.
+- PRD 도 관련 FR 번호만 언급하고 전문 복사 붙여넣기는 피한다.
+
+### 권장 진행 사이클 (MSA 전체)
+```
+[새 세션 1] PR-X.Y 요구사항 재진술 + 구현 + 리뷰 반영 + 머지
+    ↓ /clear
+[새 세션 2] PR-X.(Y+1) 동일 사이클
+    ↓ /clear
+...
+```
+
+---
+
 ## 참고
 
 ### 내부
@@ -230,4 +315,4 @@ project-root/
 
 ---
 
-**마지막 업데이트**: 2026-04-21
+**마지막 업데이트**: 2026-04-23
