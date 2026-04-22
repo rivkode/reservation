@@ -27,6 +27,9 @@ class HotelServiceArchitectureTest {
     static final ArchRule presentationDoesNotDependOnInfrastructure = ArchitectureRules.presentationDoesNotDependOnInfrastructure(BASE);
 
     @ArchTest
+    static final ArchRule presentationOnlyAccessesDomainExceptions = ArchitectureRules.presentationOnlyAccessesDomainExceptions(BASE);
+
+    @ArchTest
     static final ArchRule domainHasNoFrameworkDependency = ArchitectureRules.domainHasNoFrameworkDependency(BASE);
 
     @ArchTest

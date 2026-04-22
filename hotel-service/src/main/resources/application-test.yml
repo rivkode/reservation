@@ -3,4 +3,29 @@ server:
 
 # 단위 · 슬라이스 테스트 기본값. @SpringBootTest(webEnvironment = ...) 에 따라 실제
 # 바인딩 유무가 결정된다. Testcontainers 기반 통합 테스트는 MysqlContainerExtension
-# 이 spring.datasource.* 를 시스템 프로퍼티로 주입하므로 여기에는 DB 설정을 두지 않는다.
+# 이 spring.datasource.* 를 시스템 프로퍼티로 주입하므로 여기의 값은 덮어써진다.
+#
+# contextLoads 스모크 테스트(프레임워크 스타트업 검증) 는 MySQL 컨테이너 없이
+# H2 in-memory 로 띄운다. Flyway 는 MySQL 방언 SQL 을 포함하므로 비활성화하고
+# Hibernate ddl-auto=create-drop 로 JPA 메타데이터에서 스키마를 만든다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:hotel-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+
+app:
+  outbox:
+    poll-delay-ms: 60000
