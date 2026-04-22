@@ -36,6 +36,11 @@ dependencies {
     // 실제 spring-data-jpa runtime 은 각 서비스가 Phase 1 에서 개별 도입한다.
     api(libs.jakarta.persistence.api)
 
+    // UUID v7 생성기 (RFC 9562 §5.7). Jackson 의 저자가 관리하는 검증된 라이브러리로
+    // same-ms monotonic counter · clock-backwards 방어 등을 자체 구현 없이 제공.
+    // UuidV7 유틸이 thin wrapper 로 노출.
+    api(libs.java.uuid.generator)
+
     // Jackson 공용 설정 (JacksonConfig) 이 Jackson2ObjectMapperBuilder 타입 · JavaTimeModule ·
     // ObjectMapper 를 모두 참조한다. starter-json 은 spring-web 의 Jackson2ObjectMapperBuilder
     // 와 jackson-databind · jackson-datatype-jsr310 · parameter-names 를 한 번에 제공한다.

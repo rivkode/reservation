@@ -5,6 +5,7 @@ protobuf = "3.25.5"
 protobuf-plugin = "0.9.4"
 grpc = "1.68.1"
 archunit = "1.3.0"
+java-uuid-generator = "5.1.0"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -18,6 +19,7 @@ grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
 
 # PR-base 추가 — 버전은 Spring Boot BOM 에서 관리되어 별도 version.ref 불요
 jakarta-persistence-api = { module = "jakarta.persistence:jakarta.persistence-api" }
