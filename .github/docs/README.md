@@ -50,3 +50,4 @@
 | 날짜 | 문서 | 요약 |
 |---|---|---|
 | 2026-04-22 | [UUID v7 라이브러리 선택 분석](2026-04-22-uuid-v7-library-selection.md) | 자체 구현의 숨은 결함 3건 확인 후 `java-uuid-generator` 채택 |
+| 2026-04-22 | [Time-scoped Aggregate 패턴](2026-04-22-time-scoped-aggregate-pattern.md) | `RoomTypeRate` · `RoomTypeInventory` 의 복합 PK `(hotelId, roomTypeId, date)` 채택 근거 · 결측 날짜는 옵션 A (404) |
