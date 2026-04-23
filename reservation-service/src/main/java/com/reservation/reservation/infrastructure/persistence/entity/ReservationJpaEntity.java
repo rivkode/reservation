@@ -1,6 +1,7 @@
 package com.reservation.reservation.infrastructure.persistence.entity;
 
 import com.reservation.common.persistence.UuidBinaryConverter;
+import com.reservation.reservation.domain.model.CancellationReason;
 import com.reservation.reservation.domain.model.ReservationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -11,16 +12,20 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * {@code reservation} 테이블 매핑. PR-2.2 범위는 생성/조회 단건. 상태 전이(취소) 와
- * 부가 인덱스(투숙객/호텔별 조회) 는 PR-2.3 / PR-2.4 에서 확장한다.
+ * {@code reservation} 테이블 매핑.
  *
- * <p>{@code total_amount} · {@code currency} 는 {@code BillingQuote} VO 의 직렬화이며,
- * 이후 rate 변경에도 본 예약의 청구액은 본 컬럼으로 고정된다 — ddd-architect H1.
+ * <p>{@code total_amount} · {@code currency} · {@code quoted_at} 은 {@code BillingQuote} VO
+ * 의 직렬화 — rate 변경에도 본 예약의 청구액은 고정 (ddd-architect H1).
+ *
+ * <p>{@code cancelled_at} · {@code cancellation_reason} · {@code refund_rate}
+ * · {@code cancellation_policy_name} 4 컬럼은 {@code Cancellation} VO 의 평탄화 매핑이며
+ * {@code status == CANCELLED} 일 때만 채워진다 (Aggregate 불변식, ddd-architect C1).
  */
 @Entity
 @Table(name = "reservation")
@@ -65,6 +70,19 @@ public class ReservationJpaEntity {
     @Column(name = "status", nullable = false, length = 32)
     private ReservationStatus status;
 
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason", length = 32)
+    private CancellationReason cancellationReason;
+
+    @Column(name = "refund_rate", precision = 3, scale = 2)
+    private BigDecimal refundRate;
+
+    @Column(name = "cancellation_policy_name", length = 64)
+    private String cancellationPolicyName;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -82,8 +100,10 @@ public class ReservationJpaEntity {
                                  LocalDate checkInDate, LocalDate checkOutDate,
                                  int numberOfGuests,
                                  long totalAmount, String currency, Instant quotedAt,
-                                 ReservationStatus status, long version,
-                                 Instant createdAt, Instant updatedAt) {
+                                 ReservationStatus status,
+                                 Instant cancelledAt, CancellationReason cancellationReason,
+                                 BigDecimal refundRate, String cancellationPolicyName,
+                                 long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.hotelId = hotelId;
         this.roomTypeId = roomTypeId;
@@ -95,6 +115,10 @@ public class ReservationJpaEntity {
         this.currency = currency;
         this.quotedAt = quotedAt;
         this.status = status;
+        this.cancelledAt = cancelledAt;
+        this.cancellationReason = cancellationReason;
+        this.refundRate = refundRate;
+        this.cancellationPolicyName = cancellationPolicyName;
         this.version = version;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -142,6 +166,22 @@ public class ReservationJpaEntity {
 
     public ReservationStatus getStatus() {
         return status;
+    }
+
+    public Instant getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public CancellationReason getCancellationReason() {
+        return cancellationReason;
+    }
+
+    public BigDecimal getRefundRate() {
+        return refundRate;
+    }
+
+    public String getCancellationPolicyName() {
+        return cancellationPolicyName;
     }
 
     public long getVersion() {

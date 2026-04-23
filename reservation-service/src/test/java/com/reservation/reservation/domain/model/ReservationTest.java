@@ -9,7 +9,9 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Reservation Aggregate")
 class ReservationTest {
@@ -80,12 +82,55 @@ class ReservationTest {
 
         Reservation restored = Reservation.restore(
             id, HOTEL, ROOM_TYPE, GUEST, PERIOD, TWO_GUESTS, QUOTE,
-            ReservationStatus.CONFIRMED, 7L, createdAt, updatedAt);
+            ReservationStatus.CONFIRMED, null, 7L, createdAt, updatedAt);
 
         assertThat(restored.id()).isEqualTo(id);
         assertThat(restored.version()).isEqualTo(7L);
         assertThat(restored.createdAt()).isEqualTo(createdAt);
         assertThat(restored.updatedAt()).isEqualTo(updatedAt);
         assertThat(restored.status()).isEqualTo(ReservationStatus.CONFIRMED);
+        assertThat(restored.cancellation()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("cancel 은 CONFIRMED → CANCELLED 전이 + Cancellation 기록 + updatedAt 갱신")
+    void cancelTransitionsAndRecordsOutcome() {
+        Reservation reservation = Reservation.create(
+            HOTEL, ROOM_TYPE, GUEST, PERIOD, TWO_GUESTS, QUOTE, FIXED_CLOCK);
+        Instant cancelAt = FIXED_NOW.plusSeconds(3600);
+        Clock cancelClock = Clock.fixed(cancelAt, ZoneOffset.UTC);
+        CancellationPolicy policy = new TwentyFourHourCancellationPolicy();
+
+        reservation.cancel(policy, CancellationReason.USER_REQUEST, cancelClock);
+
+        assertThat(reservation.status()).isEqualTo(ReservationStatus.CANCELLED);
+        assertThat(reservation.cancellation()).isPresent();
+        Cancellation c = reservation.cancellation().orElseThrow();
+        assertThat(c.cancelledAt()).isEqualTo(cancelAt);
+        assertThat(c.reason()).isEqualTo(CancellationReason.USER_REQUEST);
+        assertThat(c.outcome().policyName()).isEqualTo(TwentyFourHourCancellationPolicy.NAME);
+        assertThat(reservation.updatedAt()).isEqualTo(cancelAt);
+    }
+
+    @Test
+    @DisplayName("이미 CANCELLED 인 예약에 cancel 재호출은 ReservationAlreadyCancelledException")
+    void cancelTwiceRejected() {
+        Reservation reservation = Reservation.create(
+            HOTEL, ROOM_TYPE, GUEST, PERIOD, TWO_GUESTS, QUOTE, FIXED_CLOCK);
+        CancellationPolicy policy = new TwentyFourHourCancellationPolicy();
+        reservation.cancel(policy, CancellationReason.USER_REQUEST, FIXED_CLOCK);
+
+        assertThatThrownBy(() -> reservation.cancel(policy, CancellationReason.USER_REQUEST, FIXED_CLOCK))
+            .isInstanceOf(com.reservation.reservation.domain.exception.ReservationAlreadyCancelledException.class);
+    }
+
+    @Test
+    @DisplayName("restore 시 status=CANCELLED 인데 cancellation=null 이면 Aggregate 불변식 위반")
+    void restoreRejectsInconsistentCancellation() {
+        ReservationId id = ReservationId.newId();
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> Reservation.restore(
+                id, HOTEL, ROOM_TYPE, GUEST, PERIOD, TWO_GUESTS, QUOTE,
+                ReservationStatus.CANCELLED, null, 0L, FIXED_NOW, FIXED_NOW));
     }
 }

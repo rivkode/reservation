@@ -14,6 +14,8 @@ import com.reservation.common.exception.CommonErrorCode;
  *   <li>{@code GUEST_SERVICE_UNAVAILABLE} · {@code RATE_SERVICE_UNAVAILABLE} → 503
  *       (외부 서비스 일시 장애 — 클라이언트 재시도 권장)</li>
  *   <li>{@code RATE_NOT_FOUND} → 404 (요청한 호텔·객실타입·날짜의 요금 미등록)</li>
+ *   <li>{@code RESERVATION_NOT_FOUND} → 404 (잘못된 reservationId 로 취소 시도)</li>
+ *   <li>{@code RESERVATION_ALREADY_CANCELLED} → 409 (이미 취소된 예약 재취소)</li>
  * </ul>
  */
 public enum ReservationErrorCode {
@@ -21,7 +23,9 @@ public enum ReservationErrorCode {
     GUEST_NOT_FOUND(CommonErrorCode.RESOURCE_NOT_FOUND),
     INVENTORY_NOT_INITIALIZED(CommonErrorCode.RESOURCE_NOT_FOUND),
     RATE_NOT_FOUND(CommonErrorCode.RESOURCE_NOT_FOUND),
+    RESERVATION_NOT_FOUND(CommonErrorCode.RESOURCE_NOT_FOUND),
     INSUFFICIENT_INVENTORY(CommonErrorCode.CONFLICT),
+    RESERVATION_ALREADY_CANCELLED(CommonErrorCode.CONFLICT),
     GUEST_SERVICE_UNAVAILABLE(CommonErrorCode.EXTERNAL_SERVICE_UNAVAILABLE),
     RATE_SERVICE_UNAVAILABLE(CommonErrorCode.EXTERNAL_SERVICE_UNAVAILABLE);
 

@@ -2,6 +2,7 @@ package com.reservation.reservation.domain.model;
 
 import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InvalidInventoryOperationException;
+import com.reservation.reservation.domain.exception.InventoryReleaseExceedsCapacityException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -153,6 +154,51 @@ class RoomTypeInventoryTest {
 
             assertThat(inv.availableRooms().isZero()).isTrue();
             assertThat(inv.totalRooms().value()).isEqualTo(3);
+        }
+    }
+
+    @Nested
+    @DisplayName("release (예약 취소 복원)")
+    class Release {
+
+        @Test
+        @DisplayName("available +1, total 은 불변, updatedAt 갱신")
+        void releases_available_only() {
+            RoomTypeInventory inv = RoomTypeInventory.restore(
+                new InventoryKey(HOTEL_ID, ROOM_TYPE_ID, STAY_DATE),
+                InventoryCount.of(5), InventoryCount.of(3), 0L, NOW, NOW);
+            Instant later = NOW.plusSeconds(60);
+            Clock laterClock = Clock.fixed(later, ZoneOffset.UTC);
+
+            inv.release(laterClock);
+
+            assertThat(inv.totalRooms().value()).as("totalRooms 불변").isEqualTo(5);
+            assertThat(inv.availableRooms().value()).isEqualTo(4);
+            assertThat(inv.updatedAt()).isEqualTo(later);
+        }
+
+        @Test
+        @DisplayName("available 이 이미 total 과 같으면 InventoryReleaseExceedsCapacityException")
+        void rejects_when_already_full() {
+            RoomTypeInventory inv = inventoryWithTotal(3);
+
+            assertThatExceptionOfType(InventoryReleaseExceedsCapacityException.class)
+                .isThrownBy(() -> inv.release(CLOCK))
+                .matches(e -> e.key().equals(inv.key()))
+                .matches(e -> e.totalRooms() == 3)
+                .matches(e -> e.attemptedAvailableRooms() == 4);
+        }
+
+        @Test
+        @DisplayName("decrease 직후 release 는 원상 복원")
+        void inverse_of_decrease() {
+            RoomTypeInventory inv = inventoryWithTotal(5);
+            inv.decrease(CLOCK);
+
+            inv.release(CLOCK);
+
+            assertThat(inv.availableRooms().value()).isEqualTo(5);
+            assertThat(inv.totalRooms().value()).isEqualTo(5);
         }
     }
 

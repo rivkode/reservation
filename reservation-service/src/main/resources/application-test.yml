@@ -54,3 +54,5 @@ app:
     consumer:
       hotel-events:
         group-id: reservation-service.hotel-events.test
+      billing-events:
+        group-id: reservation-service.billing-events.test

@@ -1,15 +1,21 @@
 package com.reservation.reservation.presentation.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.reservation.reservation.application.dto.CancelReservationResult;
 import com.reservation.reservation.application.dto.ReservationResult;
+import com.reservation.reservation.application.service.CancelReservationApplicationService;
 import com.reservation.reservation.application.service.CreateReservationApplicationService;
 import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InventoryNotInitializedException;
+import com.reservation.reservation.domain.exception.ReservationAlreadyCancelledException;
+import com.reservation.reservation.domain.exception.ReservationNotFoundException;
 import com.reservation.reservation.domain.model.GuestId;
 import com.reservation.reservation.domain.model.HotelId;
 import com.reservation.reservation.domain.model.InventoryKey;
+import com.reservation.reservation.domain.model.ReservationId;
 import com.reservation.reservation.domain.model.ReservationStatus;
 import com.reservation.reservation.domain.model.RoomTypeId;
+import com.reservation.reservation.domain.model.TwentyFourHourCancellationPolicy;
 import com.reservation.reservation.domain.service.GuestVerificationPort;
 import com.reservation.reservation.domain.service.RoomTypeRateQuotePort;
 import com.reservation.reservation.presentation.dto.CreateReservationRequest;
@@ -25,11 +31,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -52,6 +61,8 @@ class ReservationControllerTest {
 
     @MockBean
     CreateReservationApplicationService service;
+    @MockBean
+    CancelReservationApplicationService cancelService;
     @MockBean
     Clock clock;
 
@@ -198,6 +209,63 @@ class ReservationControllerTest {
                 .content(objectMapper.writeValueAsBytes(request)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/reservations/{id}/cancel: 200 + CommonResponse 래퍼 (cancelledAt · refundRate · policyName)")
+    void cancel200() throws Exception {
+        String reservationId = "01933333-1111-7aaa-9aaa-aaaaaaaaaaaa";
+        Instant cancelledAt = Instant.parse("2026-05-15T03:00:00Z");
+        when(cancelService.cancelByUser(any())).thenReturn(new CancelReservationResult(
+            reservationId, ReservationStatus.CANCELLED,
+            cancelledAt, new BigDecimal("1.00"),
+            TwentyFourHourCancellationPolicy.NAME));
+
+        mockMvc.perform(post("/api/v1/reservations/{id}/cancel", reservationId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.reservationId").value(reservationId))
+            .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+            .andExpect(jsonPath("$.data.cancelledAt").value("2026-05-15T03:00:00Z"))
+            .andExpect(jsonPath("$.data.refundRate").value(1.00))
+            .andExpect(jsonPath("$.data.cancellationPolicyName")
+                .value(TwentyFourHourCancellationPolicy.NAME));
+    }
+
+    @Test
+    @DisplayName("cancel — 미존재 reservation → 404 RESERVATION_NOT_FOUND")
+    void cancelNotFound404() throws Exception {
+        clockStub();
+        ReservationId id = ReservationId.newId();
+        when(cancelService.cancelByUser(any())).thenThrow(new ReservationNotFoundException(id));
+
+        mockMvc.perform(post("/api/v1/reservations/{id}/cancel", id.asString()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("RESERVATION_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("cancel — 이미 취소된 reservation → 409 RESERVATION_ALREADY_CANCELLED")
+    void cancelAlreadyCancelled409() throws Exception {
+        clockStub();
+        ReservationId id = ReservationId.newId();
+        when(cancelService.cancelByUser(any()))
+            .thenThrow(new ReservationAlreadyCancelledException(id));
+
+        mockMvc.perform(post("/api/v1/reservations/{id}/cancel", id.asString()))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("RESERVATION_ALREADY_CANCELLED"));
+    }
+
+    @Test
+    @DisplayName("cancel — 잘못된 UUID path variable → 400 VALIDATION_FAILED, ApplicationService 미진입")
+    void cancelMalformedUuid400() throws Exception {
+        clockStub();
+
+        mockMvc.perform(post("/api/v1/reservations/{id}/cancel", "not-a-uuid"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verify(cancelService, never()).cancelByUser(any());
     }
 
     private CreateReservationRequest validRequest() {

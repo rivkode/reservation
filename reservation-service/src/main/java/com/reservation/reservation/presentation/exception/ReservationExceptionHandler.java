@@ -5,6 +5,8 @@ import com.reservation.common.exception.ErrorResponse;
 import com.reservation.reservation.domain.exception.CurrencyMismatchException;
 import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InventoryNotInitializedException;
+import com.reservation.reservation.domain.exception.ReservationAlreadyCancelledException;
+import com.reservation.reservation.domain.exception.ReservationNotFoundException;
 import com.reservation.reservation.domain.service.GuestVerificationPort;
 import com.reservation.reservation.domain.service.RoomTypeRateQuotePort;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,6 +51,18 @@ public class ReservationExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInsufficientInventory(
         InsufficientInventoryException e, HttpServletRequest req) {
         return build(ReservationErrorCode.INSUFFICIENT_INVENTORY, e.getMessage(), req);
+    }
+
+    @ExceptionHandler(ReservationNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleReservationNotFound(
+        ReservationNotFoundException e, HttpServletRequest req) {
+        return build(ReservationErrorCode.RESERVATION_NOT_FOUND, e.getMessage(), req);
+    }
+
+    @ExceptionHandler(ReservationAlreadyCancelledException.class)
+    public ResponseEntity<ErrorResponse> handleReservationAlreadyCancelled(
+        ReservationAlreadyCancelledException e, HttpServletRequest req) {
+        return build(ReservationErrorCode.RESERVATION_ALREADY_CANCELLED, e.getMessage(), req);
     }
 
     @ExceptionHandler(RoomTypeRateQuotePort.RoomTypeRateNotFoundException.class)

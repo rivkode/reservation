@@ -2,6 +2,7 @@ package com.reservation.reservation.domain.model;
 
 import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InvalidInventoryOperationException;
+import com.reservation.reservation.domain.exception.InventoryReleaseExceedsCapacityException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -136,6 +137,28 @@ public class RoomTypeInventory {
             throw new InsufficientInventoryException(key);
         }
         this.availableRooms = availableRooms.decrement();
+        this.updatedAt = Instant.now(clock);
+    }
+
+    /**
+     * 예약 취소에 따라 가용 재고를 1 복원한다 ({@code totalRooms} 는 불변) — {@link #decrease}
+     * 의 도메인 dual.
+     *
+     * <p>{@code availableRooms == totalRooms} 상태에서 호출되면
+     * {@link InventoryReleaseExceedsCapacityException} 으로 차단 — 데이터 정합성 시그널이며
+     * Application Service 는 이를 흡수하지 말고 트랜잭션을 롤백시켜야 한다 (ddd-architect M2).
+     * tombstone 정책의 무시 가능 위반 ({@link #removeRoom} 의 {@link InvalidInventoryOperationException})
+     * 과는 다른 의미다.
+     *
+     * @see #decrease(Clock)
+     */
+    public void release(Clock clock) {
+        Objects.requireNonNull(clock, "clock");
+        if (availableRooms.value() >= totalRooms.value()) {
+            throw new InventoryReleaseExceedsCapacityException(
+                key, totalRooms.value(), availableRooms.value() + 1);
+        }
+        this.availableRooms = availableRooms.increment();
         this.updatedAt = Instant.now(clock);
     }
 
