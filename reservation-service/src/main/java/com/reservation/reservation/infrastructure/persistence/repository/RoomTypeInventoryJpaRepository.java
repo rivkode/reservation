@@ -23,4 +23,14 @@ public interface RoomTypeInventoryJpaRepository extends JpaRepository<RoomTypeIn
                                                 @Param("roomTypeId") UUID roomTypeId,
                                                 @Param("fromDate") LocalDate fromDate,
                                                 @Param("toDate") LocalDate toDate);
+
+    @Query("""
+        select i from RoomTypeInventoryJpaEntity i
+        where i.id.hotelId = :hotelId
+          and i.id.stayDate between :fromDate and :toDate
+        order by i.id.roomTypeId asc, i.id.stayDate asc
+        """)
+    List<RoomTypeInventoryJpaEntity> findRangeByHotel(@Param("hotelId") UUID hotelId,
+                                                       @Param("fromDate") LocalDate fromDate,
+                                                       @Param("toDate") LocalDate toDate);
 }

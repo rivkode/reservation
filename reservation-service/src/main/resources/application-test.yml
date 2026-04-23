@@ -31,7 +31,14 @@ spring:
 # 주소를 두지 않고, 실제 서버에 연결하는 통합 테스트가 직접 채널을 주입하도록 비워둔다.
 # autowire 누락을 막기 위해 channel-shutdown-grace-period 만 짧게 둬 컨텍스트 정리를
 # 지연시키지 않는다.
+#
+# grpc.server.port 0 — PR-2.4 에서 @GrpcService 빈이 등장하면서 스프링 기동 시 starter 가
+# 서버를 자동 바인딩한다. 기본값 9090 으로 두면 테스트 병렬 실행 · 로컬 구동 중인 서비스와
+# 포트 충돌 가능성이 있어 ephemeral port 로 강제. gRPC 서버 자체의 정상 동작 검증은
+# in-process transport 로 별도 수행하므로 본 포트에 직접 붙는 테스트는 없다.
 grpc:
+  server:
+    port: 0
   client:
     guest-service:
       address: "in-process:guest-service-test"

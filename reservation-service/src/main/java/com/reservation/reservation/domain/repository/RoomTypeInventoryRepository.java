@@ -34,6 +34,18 @@ public interface RoomTypeInventoryRepository {
                                        LocalDate fromDate,
                                        LocalDate toDate);
 
+    /**
+     * 특정 호텔의 {@code [fromDate, toDate]} 구간 (양끝 포함) 모든 roomType 의 row 를
+     * 반환. PR-2.4 의 {@code StreamInventory} gRPC 가 호텔 단위로 전체 재고를 스트리밍
+     * 하기 위해 사용한다 — hotel-service 캐시 재구축 배치 요구(FR-H-08, PR-3.3).
+     *
+     * <p>정렬은 {@code (roomTypeId, stayDate)} 오름차순 — 호출자 hotel-service 가
+     * Redis 에 적재할 때 같은 roomType 의 날짜 구간이 연속해서 들어오도록 보장.
+     */
+    List<RoomTypeInventory> findRangeByHotel(HotelId hotelId,
+                                              LocalDate fromDate,
+                                              LocalDate toDate);
+
     void save(RoomTypeInventory inventory);
 
     void saveAll(List<RoomTypeInventory> inventories);

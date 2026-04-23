@@ -27,6 +27,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -87,6 +88,57 @@ class RoomTypeInventoryPersistenceTest {
         assertThat(range).hasSize(3)
             .extracting(RoomTypeInventory::stayDate)
             .containsExactly(DAY_0.plusDays(1), DAY_0.plusDays(2), DAY_0.plusDays(3));
+    }
+
+    @Test
+    @DisplayName("findRangeByHotel: 동일 호텔의 모든 roomType × 구간 내 날짜를 (roomType, stayDate) 오름차순으로 반환")
+    void findRangeByHotelOrdersByRoomTypeThenDate() {
+        RoomTypeInventoryRepositoryImpl repo = new RoomTypeInventoryRepositoryImpl(jpaRepository);
+        // roomType A 는 UUID 가 작아 먼저 나오고, B 가 뒤에 나오는 조합으로 정렬 검증.
+        RoomTypeId roomTypeA = RoomTypeId.of("01933333-aaaa-7aaa-9aaa-111122223333");
+        RoomTypeId roomTypeB = RoomTypeId.of("01933333-bbbb-7aaa-9aaa-111122223333");
+        // 다른 호텔 데이터는 결과에 섞이지 말아야 한다.
+        HotelId otherHotel = HotelId.of("01933333-2222-7aaa-9aaa-111122223333");
+
+        for (int i = 0; i < 3; i++) {
+            RoomTypeInventory invA = RoomTypeInventory.create(HOTEL_ID, roomTypeA, DAY_0.plusDays(i), FIXED);
+            invA.addRoom(FIXED);
+            repo.save(invA);
+
+            RoomTypeInventory invB = RoomTypeInventory.create(HOTEL_ID, roomTypeB, DAY_0.plusDays(i), FIXED);
+            invB.addRoom(FIXED);
+            repo.save(invB);
+
+            RoomTypeInventory invOther = RoomTypeInventory.create(otherHotel, roomTypeA, DAY_0.plusDays(i), FIXED);
+            invOther.addRoom(FIXED);
+            repo.save(invOther);
+        }
+        em.flush();
+        em.clear();
+
+        List<RoomTypeInventory> range = repo.findRangeByHotel(HOTEL_ID, DAY_0, DAY_0.plusDays(2));
+
+        assertThat(range).hasSize(6)
+            .extracting(RoomTypeInventory::roomTypeId, RoomTypeInventory::stayDate)
+            .containsExactly(
+                tuple(roomTypeA, DAY_0),
+                tuple(roomTypeA, DAY_0.plusDays(1)),
+                tuple(roomTypeA, DAY_0.plusDays(2)),
+                tuple(roomTypeB, DAY_0),
+                tuple(roomTypeB, DAY_0.plusDays(1)),
+                tuple(roomTypeB, DAY_0.plusDays(2))
+            );
+    }
+
+    @Test
+    @DisplayName("findRangeByHotel: 매칭 row 가 없으면 빈 리스트")
+    void findRangeByHotelEmptyWhenNoMatch() {
+        RoomTypeInventoryRepositoryImpl repo = new RoomTypeInventoryRepositoryImpl(jpaRepository);
+        HotelId unknownHotel = HotelId.of("01933333-9999-7aaa-9aaa-111122223333");
+
+        List<RoomTypeInventory> range = repo.findRangeByHotel(unknownHotel, DAY_0, DAY_0.plusDays(10));
+
+        assertThat(range).isEmpty();
     }
 
     @Test
