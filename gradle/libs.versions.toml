@@ -4,6 +4,7 @@ dependency-management = "1.1.7"
 protobuf = "3.25.5"
 protobuf-plugin = "0.9.4"
 grpc = "1.68.1"
+grpc-spring-boot-starter = "3.1.0.RELEASE"
 archunit = "1.3.0"
 java-uuid-generator = "5.1.0"
 lombok = "1.18.36"
@@ -18,6 +19,13 @@ protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "p
 grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
+
+# net.devh 계열 grpc-spring-boot-starter. 3.1.0.RELEASE 는 Spring Boot 3.2 지원 — 본
+# 저장소는 3.3.5 를 사용하지만 autoconfigure 가 3.2+ 범위에서 호환된다. 서버 측 스타터만
+# 도입 (클라이언트 스타터는 reservation-service PR-2.x 에서 추가). 하위 grpc-core/stub 는
+# contracts 모듈이 관리하는 1.68.1 버전으로 고정된다.
+grpc-server-spring-boot-starter = { module = "net.devh:grpc-server-spring-boot-starter", version.ref = "grpc-spring-boot-starter" }
 
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
