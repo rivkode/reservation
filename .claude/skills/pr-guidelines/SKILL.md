@@ -20,7 +20,15 @@ PR 은 **리뷰를 위해 최적화** 되어야 하며, 작성자가 리뷰어�
 
 ---
 
-## 2. 브랜치 네이밍
+## 2. 브랜치 전략 & 네이밍
+
+### 2.1 기본 브랜치
+- **기본(default) 브랜치는 `dev`**. `main` 이 아니다.
+- **모든 PR 의 base 브랜치는 `dev`**. 실수로 `main` 을 선택하지 않는다.
+- 새 작업을 시작할 때 반드시 `git checkout dev && git pull origin dev` 후 분기한다.
+- `main` 은 운영 릴리스용으로 별도 관리되며, `dev` → `main` 머지는 릴리스 담당자가 수행한다. 기능 PR 은 `main` 을 건드리지 않는다.
+
+### 2.2 브랜치 네이밍
 
 ```
 <type>/<scope>-<short-description>
@@ -202,9 +210,9 @@ PR 을 연 직후 **본인이 먼저** 아래를 확인한다. 기계적으로.
 
 연속된 변경은 스택으로 쌓는다:
 ```
-main ← pr1 (refactor) ← pr2 (feat part 1) ← pr3 (feat part 2)
+dev ← pr1 (refactor) ← pr2 (feat part 1) ← pr3 (feat part 2)
 ```
-- pr1 이 머지되면 pr2 의 base 를 main 으로 변경.
+- pr1 이 머지되면 pr2 의 base 를 `dev` 로 변경.
 - 리뷰어가 맥락을 유지하기 쉬움.
 
 ---
@@ -223,8 +231,8 @@ Draft 에서는 `[WIP]` 접두사 없이 GitHub 의 Draft 기능을 사용한다
 ## 8. 머지 전략
 
 ### 8.1 기본 전략: **Squash and Merge**
-- PR 의 여러 커밋이 main 에 하나의 커밋으로 합쳐짐.
-- main 히스토리가 깔끔하게 유지됨.
+- PR 의 여러 커밋이 `dev` 에 하나의 커밋으로 합쳐짐.
+- `dev` 히스토리가 깔끔하게 유지됨.
 - 커밋 메시지는 PR 제목 + 본문이 되므로 **PR 제목을 정확히 작성** 해야 함.
 
 ### 8.2 예외 케이스
@@ -232,11 +240,12 @@ Draft 에서는 `[WIP]` 접두사 없이 GitHub 의 Draft 기능을 사용한다
 - **Merge Commit**: 대규모 기능 브랜치를 병합하면서 이력을 남기고 싶을 때 (드물게).
 
 ### 8.3 머지 전 최종 확인
+- [ ] PR 의 base 브랜치가 `dev` 인가? (실수로 `main` 이 선택되지 않았는가?)
 - [ ] 모든 리뷰어가 Approve 했는가?
 - [ ] CI / 빌드가 녹색인가?
 - [ ] 리뷰 중 논의된 변경 사항이 반영되었는가?
 - [ ] PR 제목이 머지 후 히스토리에 남기 적절한가?
-- [ ] main 과 충돌이 없는가?
+- [ ] `dev` 와 충돌이 없는가?
 
 ---
 
@@ -275,7 +284,8 @@ Draft 에서는 `[WIP]` 접두사 없이 GitHub 의 Draft 기능을 사용한다
 - 테스트 커버리지 (JaCoCo + Codecov)
 - 컨벤션 검증 (commitlint, PR title check)
 
-### 10.2 Branch Protection Rules (main)
+### 10.2 Branch Protection Rules (`dev`, `main`)
+`dev` (기본 브랜치) 와 `main` (릴리스 브랜치) 모두에 적용한다.
 - [ ] Require a pull request before merging
 - [ ] Require approvals (최소 1인)
 - [ ] Dismiss stale approvals on new commits
