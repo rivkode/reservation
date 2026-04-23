@@ -13,3 +13,6 @@ management:
     health:
       probes:
         enabled: true
+
+# gRPC 서버는 각 프로파일에서 포트만 오버라이드. 공통 기본값은 여기에 두지 않고 프로파일별
+# 로 명시 — 0(test), 9090(docker), 9093(local) 로 의도적으로 다르다.
