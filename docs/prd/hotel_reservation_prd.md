@@ -370,7 +370,7 @@ hotel-service: Room 변경 → RoomCreated/Updated/Deleted 이벤트 발행
 - [ ] PR-1.2: rate-service
 - [ ] PR-1.3: guest-service (+ gRPC)
 - [ ] PR-2.1: reservation-service Inventory
-- [ ] PR-2.2: reservation-service 예약 생성
+- [x] PR-2.2: reservation-service 예약 생성
 - [ ] PR-2.3: reservation-service 예약 취소
 - [ ] PR-2.4: reservation-service Inventory gRPC
 - [ ] PR-3.1: hotel-service Redis 캐시

@@ -40,7 +40,7 @@ class DomainEventContractTest {
             new RoomUpdatedEvent(EVENT_ID, OCCURRED_AT, "H-1", "R-1", "RT-1"),
             new RoomDeletedEvent(EVENT_ID, OCCURRED_AT, "H-1", "R-1", "RT-1"),
             new RoomTypeRateChangedEvent(EVENT_ID, OCCURRED_AT, "H-1", "RT-1", CHECK_IN, 150_000L, "KRW"),
-            new ReservationCreatedEvent(EVENT_ID, OCCURRED_AT, "RSV-1", "H-1", "RT-1", "G-1", CHECK_IN, CHECK_OUT, 2),
+            new ReservationCreatedEvent(EVENT_ID, OCCURRED_AT, "RSV-1", "H-1", "RT-1", "G-1", CHECK_IN, CHECK_OUT, 2, 300_000L, "KRW"),
             new ReservationCancelledEvent(EVENT_ID, OCCURRED_AT, "RSV-1", "H-1", "RT-1", CHECK_IN, CHECK_OUT),
             new BillingCreatedEvent(EVENT_ID, OCCURRED_AT, "RSV-1", "B-1", 300_000L, "KRW"),
             new BillingCreationFailedEvent(EVENT_ID, OCCURRED_AT, "RSV-1", "PAYMENT_GATEWAY_TIMEOUT")
@@ -53,7 +53,7 @@ class DomainEventContractTest {
             () -> new RoomUpdatedEvent(null, OCCURRED_AT, "H-1", "R-1", "RT-1"),
             () -> new RoomDeletedEvent(null, OCCURRED_AT, "H-1", "R-1", "RT-1"),
             () -> new RoomTypeRateChangedEvent(null, OCCURRED_AT, "H-1", "RT-1", CHECK_IN, 150_000L, "KRW"),
-            () -> new ReservationCreatedEvent(null, OCCURRED_AT, "RSV-1", "H-1", "RT-1", "G-1", CHECK_IN, CHECK_OUT, 2),
+            () -> new ReservationCreatedEvent(null, OCCURRED_AT, "RSV-1", "H-1", "RT-1", "G-1", CHECK_IN, CHECK_OUT, 2, 300_000L, "KRW"),
             () -> new ReservationCancelledEvent(null, OCCURRED_AT, "RSV-1", "H-1", "RT-1", CHECK_IN, CHECK_OUT),
             () -> new BillingCreatedEvent(null, OCCURRED_AT, "RSV-1", "B-1", 300_000L, "KRW"),
             () -> new BillingCreationFailedEvent(null, OCCURRED_AT, "RSV-1", "REASON")

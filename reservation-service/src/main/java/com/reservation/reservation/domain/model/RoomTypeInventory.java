@@ -1,5 +1,6 @@
 package com.reservation.reservation.domain.model;
 
+import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InvalidInventoryOperationException;
 
 import java.time.Clock;
@@ -117,6 +118,23 @@ public class RoomTypeInventory {
                 "Cannot removeRoom on empty inventory " + key);
         }
         this.totalRooms = totalRooms.decrement();
+        this.availableRooms = availableRooms.decrement();
+        this.updatedAt = Instant.now(clock);
+    }
+
+    /**
+     * 예약 생성에 따라 가용 재고를 1 차감한다 ({@code totalRooms} 는 불변).
+     *
+     * <p>{@code availableRooms == 0} 이면 {@link InsufficientInventoryException} 으로
+     * 차감을 거부 — Aggregate 가 오버부킹 불변식을 직접 방어한다 (PRD §3.2 SoT).
+     * 동시 차감 경합은 JPA 의 {@code @Version} OCC 가 차단하며, 본 메서드는 단일
+     * 트랜잭션 안 단일 차감만 책임진다.
+     */
+    public void decrease(Clock clock) {
+        Objects.requireNonNull(clock, "clock");
+        if (availableRooms.isZero()) {
+            throw new InsufficientInventoryException(key);
+        }
         this.availableRooms = availableRooms.decrement();
         this.updatedAt = Instant.now(clock);
     }
