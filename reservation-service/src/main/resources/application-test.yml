@@ -27,6 +27,19 @@ spring:
   kafka:
     bootstrap-servers: localhost:9092
 
+# gRPC client 는 테스트에서 in-process 채널을 사용한다. application-test.yml 에는 기본
+# 주소를 두지 않고, 실제 서버에 연결하는 통합 테스트가 직접 채널을 주입하도록 비워둔다.
+# autowire 누락을 막기 위해 channel-shutdown-grace-period 만 짧게 둬 컨텍스트 정리를
+# 지연시키지 않는다.
+grpc:
+  client:
+    guest-service:
+      address: "in-process:guest-service-test"
+      negotiation-type: plaintext
+    rate-service:
+      address: "in-process:rate-service-test"
+      negotiation-type: plaintext
+
 app:
   inventory:
     # 운영은 90 — 테스트는 3 으로 축소해 90회 루프/save 비용을 피한다. 테스트 내에서도

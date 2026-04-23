@@ -27,6 +27,11 @@ grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
 # contracts 모듈이 관리하는 1.68.1 버전으로 고정된다.
 grpc-server-spring-boot-starter = { module = "net.devh:grpc-server-spring-boot-starter", version.ref = "grpc-spring-boot-starter" }
 
+# net.devh 의 gRPC 클라이언트 스타터. 본 저장소의 reservation-service 가 PR-2.2 부터
+# guest-service · rate-service 에 동기 호출하기 위해 도입. @GrpcClient 주입과 채널/
+# Deadline 기본값을 application.yml 로 관리할 수 있게 한다.
+grpc-client-spring-boot-starter = { module = "net.devh:grpc-client-spring-boot-starter", version.ref = "grpc-spring-boot-starter" }
+
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
