@@ -39,6 +39,15 @@ public class RoomTypeInventoryRepositoryImpl implements RoomTypeInventoryReposit
     }
 
     @Override
+    public List<RoomTypeInventory> findRangeByHotel(HotelId hotelId,
+                                                     LocalDate fromDate,
+                                                     LocalDate toDate) {
+        List<RoomTypeInventoryJpaEntity> rows = jpaRepository.findRangeByHotel(
+            hotelId.value(), fromDate, toDate);
+        return rows.stream().map(RoomTypeInventoryJpaMapper::toDomain).toList();
+    }
+
+    @Override
     public void save(RoomTypeInventory inventory) {
         jpaRepository.save(RoomTypeInventoryJpaMapper.toEntity(inventory));
     }

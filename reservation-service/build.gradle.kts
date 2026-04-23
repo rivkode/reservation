@@ -22,6 +22,11 @@ dependencies {
     // 본 스타터는 @GrpcClient 주입 · 채널 설정만 추가한다.
     implementation(libs.grpc.client.spring.boot.starter)
 
+    // PR-2.4 — hotel-service 의 캐시 재구축 배치(FR-H-08) 가 호출할 StreamInventory
+    // 서버 구현을 위해 서버 스타터를 추가. @GrpcService 스캔 · 서버 포트 자동 구성.
+    // reservation-service 는 이 PR 부터 gRPC 클라이언트 + 서버를 동시에 제공한다.
+    implementation(libs.grpc.server.spring.boot.starter)
+
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(testFixtures(project(":common-infrastructure")))
     testRuntimeOnly(libs.junit.platform.launcher)
