@@ -13,7 +13,7 @@
 
 - 로컬 기동 후 **어떤 흐름을 검증해야 하는지** 를 체크리스트로 쓸 수 있다.
 - **각 API 호출이 트리거하는 이벤트 · DB side-effect** 까지 따라가 "이 엔드포인트를 호출하면 시스템 어디가 변하는가" 를 이해한다.
-- 향후 guest-service / reservation-service 추가 시 같은 포맷으로 확장.
+- 향후 reservation-service 추가 시 같은 포맷으로 확장.
 
 ---
 
@@ -500,9 +500,206 @@ curl "http://127.0.0.1:8082/api/v1/room-type-rates?hotelId=$HOTEL_ID&roomTypeId=
 
 ---
 
-## 4. 종단간 시나리오 예시 (End-to-End)
+## 4. guest-service (REST Port 8083 · gRPC Port 9093)
 
-### 4-1. 신규 호텔 운영 개시 시퀀스
+**Bounded Context**: 투숙객(Guest) 마스터 정보 관리 + **reservation-service 에게 gRPC 조회 제공**
+**Aggregate 1개**: `Guest`
+**DB**: MySQL `guest` 스키마 (guest-db:3309)
+**특이점**: 이 프로젝트의 **최초 gRPC 서버**. REST 와 gRPC 를 같은 Application Service 로 서빙한다.
+
+### 📋 REST API 요약표
+
+| # | API | 메서드 | 경로 | 이벤트 발행 | 핵심 검증 |
+|---|---|---|---|---|---|
+| 4-1 | 투숙객 등록 | POST | `/api/v1/guests` | — | email UNIQUE, phoneNumber E.164 |
+| 4-2 | 투숙객 조회 | GET | `/api/v1/guests/{guestId}` | — | 존재 |
+| 4-3 | 투숙객 변경 | PATCH | `/api/v1/guests/{guestId}` | — | 이메일 변경 시 중복 재검증, name 쌍 단위 |
+
+### 📋 gRPC API 요약표
+
+| # | RPC | Request | Response | 매핑 Application 메서드 | 제한 |
+|---|---|---|---|---|---|
+| 4-G1 | `GuestService/GetGuest` | `{ id }` | `Guest` | `findById` | NOT_FOUND / INVALID_ARGUMENT |
+| 4-G2 | `GuestService/BatchGetGuests` | `{ ids[] }` | `{ guests[] }` | `findAllByIds` | 최대 100건 — 초과 시 INVALID_ARGUMENT |
+
+**중요 결정**: guest-service 는 **이벤트를 발행하지 않는다**. PRD §7.2 에 guest-service 가 소유한 Kafka 토픽이 없다. `reservation-events` 의 "방문 이력 업데이트" 는 **구독자** 역할이며 PR-2.x 예약 생성 이후 별도 PR 로 도입한다.
+
+---
+
+### 4-1. 투숙객 등록 — POST /api/v1/guests
+
+**비즈니스 시나리오**: 예약 전(또는 프론트 데스크에서) 신규 투숙객을 시스템에 등록. 이메일은 전역 유일하며, 연락처는 국제 표준 형식으로 정규화된다.
+
+**요청**:
+```bash
+curl -X POST http://127.0.0.1:8083/api/v1/guests \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "firstName": "길동",
+    "lastName": "홍",
+    "email": "hong@example.com",
+    "phoneNumber": "+82-10-1234-5678"
+  }'
+```
+
+**응답 (201)**:
+```json
+{
+  "data": {
+    "id": "01970000-...-uuidv7",
+    "firstName": "길동",
+    "lastName": "홍",
+    "email": "hong@example.com",
+    "phoneNumber": "+821012345678"
+  }
+}
+```
+
+**내부 동작**:
+1. `GuestName(firstName, lastName)` · `Email(email)` · `PhoneNumber(phoneNumber)` VO 생성 — 각 VO 가 불변식 검증
+   - `Email` 은 **lowercase 로 정규화**해 저장 (`HONG@Example.COM` → `hong@example.com`)
+   - `PhoneNumber` 는 하이픈 · 공백 · 괄호 제거 후 **E.164 형식** 으로 정규화 (`+82-10-1234-5678` → `+821012345678`)
+   - 국가코드 없는 입력(`010-1234-5678`) 은 Strict reject (400)
+2. `repository.existsByEmail(email)` — Aggregate 집합 불변식(유일성) 선제 검증 (409 DUPLICATE_EMAIL)
+3. `Guest.create(name, email, phone, clock)` → 신규 `GuestId` (UUIDv7) 발급
+4. `repository.save(guest)` — DB UNIQUE 제약 `uk_guest_email` 이 race condition 최종 방어
+5. **이벤트 발행 없음**
+
+**주요 에러**:
+| 상황 | Status | code |
+|---|---|---|
+| `email` UNIQUE 충돌 | 409 | DUPLICATE_EMAIL |
+| `firstName` 공백 | 400 | VALIDATION_FAILED |
+| `email` 형식 오류 (`no-at-sign`) | 400 | VALIDATION_FAILED |
+| `phoneNumber` 국가코드 누락 (`010-1234-5678`) | 400 | VALIDATION_FAILED |
+| 대문자로 이미 등록된 이메일 (`HONG@example.com`) 을 lowercase 로 재등록 (`hong@example.com`) | 409 | DUPLICATE_EMAIL (정규화 후 동일) |
+
+**학습 포인트**:
+- "이메일 유일성" 은 Aggregate 내부 불변식이 아니라 **집합 전체** 의 불변식이므로 Application Service + DB UNIQUE 가 함께 방어 (Vernon IDDD §10 set-based validation). ddd-architect 검토 H2 근거.
+- Email / PhoneNumber 는 **저장 시 정규화** 하므로 입력 대소문자·공백 차이는 중복 판정에 영향을 주지 않는다.
+
+---
+
+### 4-2. 투숙객 조회 — GET /api/v1/guests/{guestId}
+
+**시나리오**: 관리자 화면 · 예약 확인 페이지에서 단건 조회.
+
+**요청**:
+```bash
+curl http://127.0.0.1:8083/api/v1/guests/$GUEST_ID
+```
+
+**응답 (200)**: 4-1 과 동일 포맷.
+
+**주요 에러**:
+| 상황 | Status | code |
+|---|---|---|
+| 존재하지 않는 ID | 404 | GUEST_NOT_FOUND |
+| UUID 형식이 아닌 문자열 | 400 | VALIDATION_FAILED |
+
+---
+
+### 4-3. 투숙객 변경 — PATCH /api/v1/guests/{guestId}
+
+**시나리오**: 전화번호 · 이메일 · 이름 정정. 각 필드는 **nullable**(선택) 로 전달되며, 제공되지 않은 필드는 유지된다. 실제 값이 바뀐 항목이 1개라도 있을 때만 `save` 가 실행된다.
+
+**요청 (부분 변경 — 이메일만 교체)**:
+```bash
+curl -X PATCH http://127.0.0.1:8083/api/v1/guests/$GUEST_ID \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"new@example.com"}'
+```
+
+**응답 (200)**: 갱신된 Guest 표현.
+
+**내부 동작 (부분 변경 + no-op 최적화)**:
+1. `repository.findById(guestId)` → 없으면 404
+2. 제공된 필드만 도메인 메서드 호출 — `changeName` · `changeEmail` · `changePhoneNumber`
+   - 각 메서드는 **동일 값이면 `false` 반환** (RoomTypeRate `changeAmount` 와 동일 패턴)
+   - **이메일 변경 시**: 실제로 값이 바뀌는 경우에만 `existsByEmail` 재검증 → 중복이면 409
+3. 변경된 항목이 **하나도 없으면** save 건너뜀 (DB write 0)
+4. 실제 변경이 있으면 `save` (version + 1)
+5. **이벤트 발행 없음**
+
+**주의**: `firstName` · `lastName` 은 GuestName VO 로 묶여 있어 **둘 중 한쪽만 제공하면 400** (`firstName and lastName must be provided together`). 클라이언트는 현재 값을 GET 으로 읽은 뒤 변경 필드만 교체해 보낼 것.
+
+**주요 에러**:
+| 상황 | Status | code |
+|---|---|---|
+| guestId 미존재 | 404 | GUEST_NOT_FOUND |
+| 이메일 변경 시 중복 | 409 | DUPLICATE_EMAIL |
+| `firstName` · `lastName` 한쪽만 제공 | 400 | VALIDATION_FAILED |
+| 잘못된 이메일/전화번호 형식 | 400 | VALIDATION_FAILED |
+
+---
+
+### 4-G1. gRPC GetGuest
+
+**시나리오**: reservation-service 가 예약 생성 시 투숙객 존재 · 연락처를 동기 검증 (PRD §5 FR-RSV-02 · §7.1). 호출자는 **Deadline 3초 · Circuit Breaker 필수** (CLAUDE.md 원칙 8).
+
+**호출 예 (grpcurl)**:
+```bash
+grpcurl -plaintext \
+  -d "{\"id\":\"$GUEST_ID\"}" \
+  127.0.0.1:9093 \
+  com.reservation.contracts.guest.GuestService/GetGuest
+```
+
+**응답 payload (proto)**:
+```json
+{
+  "id": "01970000-...-uuidv7",
+  "firstName": "길동",
+  "lastName": "홍",
+  "email": "hong@example.com",
+  "phoneNumber": "+821012345678"
+}
+```
+
+**에러 매핑 (gRPC Status)**:
+| 상황 | gRPC Status |
+|---|---|
+| 존재하지 않는 id | `NOT_FOUND` |
+| UUID 형식이 아닌 id | `INVALID_ARGUMENT` |
+| 기타 런타임 예외 | `INTERNAL` (원인은 서버 로그) |
+
+---
+
+### 4-G2. gRPC BatchGetGuests
+
+**시나리오**: 예약 목록 · 관리자 화면에서 다수 guest 를 N+1 없이 조회.
+
+**호출 예**:
+```bash
+grpcurl -plaintext \
+  -d "{\"ids\":[\"$G1\",\"$G2\",\"$G3\"]}" \
+  127.0.0.1:9093 \
+  com.reservation.contracts.guest.GuestService/BatchGetGuests
+```
+
+**응답 payload**:
+```json
+{ "guests": [ {...}, {...} ] }
+```
+
+**partial response 관례**: 요청 id 중 **존재하는 guest 만** 반환한다 (누락된 id 는 silent skip). 호출자는 응답의 id 집합과 요청 id 집합의 차집합으로 누락을 감지한다.
+
+**에러 매핑**:
+| 상황 | gRPC Status |
+|---|---|
+| 100건 초과 요청 | `INVALID_ARGUMENT` (`too many ids: max=100`) |
+| 잘못된 UUID 포함 | `INVALID_ARGUMENT` |
+
+**학습 포인트**:
+- gRPC 서버 구현은 `infrastructure/grpc/server/GuestGrpcService.java` 에 위치 (ArchUnit `grpcServiceImplsOnlyInServerPackage` 규칙 강제)
+- Application Service 재사용 — REST / gRPC 가 같은 유스케이스 로직을 공유
+- `BatchGetGuests` 의 **크기 상한 100** 은 인증 없는 서비스간 호출의 암묵적 DoS 벡터 방어 (rate-service 의 `MAX_RANGE_DAYS` 와 같은 원칙)
+
+---
+
+## 5. 종단간 시나리오 예시 (End-to-End)
+
+### 5-1. 신규 호텔 운영 개시 시퀀스
 
 실제로 관리자가 "새 호텔을 오픈" 할 때 시스템에 입력하는 순서:
 
@@ -518,7 +715,7 @@ curl "http://127.0.0.1:8082/api/v1/room-type-rates?hotelId=$HOTEL_ID&roomTypeId=
 - 향후 reservation-service 가 이를 구독해 `RoomTypeInventory` 레코드 생성 (FR-RSV-04)
 - rate-service 는 호텔/객실 존재와 무관하게 요금만 등록 (Database per Service)
 
-### 4-2. 시즌 요금 변경 캠페인
+### 5-2. 시즌 요금 변경 캠페인
 
 ```
 for date in 2026-07-01..2026-08-31 do
@@ -528,7 +725,7 @@ done
 - **날짜당 1건**의 `RoomTypeRateChangedEvent` 가 `rate-events` 토픽에 발행됨
 - 향후 reservation-service 가 이 이벤트로 견적 재계산 또는 billing 갱신 트리거
 
-### 4-3. 운영 중 객실 폐쇄
+### 5-3. 운영 중 객실 폐쇄
 
 ```
 DELETE /api/v1/rooms/{roomId}  → RoomDeletedEvent
@@ -538,7 +735,7 @@ DELETE /api/v1/rooms/{roomId}  → RoomDeletedEvent
 
 ---
 
-## 5. 로컬 검증 체크리스트 (테스트 케이스 기반)
+## 6. 로컬 검증 체크리스트 (테스트 케이스 기반)
 
 각 API 를 로컬에서 수동 검증할 때의 체크리스트. 단위/통합 테스트에서 이미 커버된 것도 **직접 눈으로 확인** 하면 학습에 크게 도움된다.
 
@@ -563,15 +760,23 @@ DELETE /api/v1/rooms/{roomId}  → RoomDeletedEvent
 - [ ] `from=2026-01-01&to=2027-06-01` (500일) → 400 "range too wide"
 - [ ] rate DB outbox 행 확인
 
+### guest-service
+- [ ] 투숙객 등록 201 + `data.phoneNumber` 가 E.164 (`+821012345678`) 로 정규화 확인
+- [ ] 동일 이메일 대소문자 다른 값으로 재등록 → 409 DUPLICATE_EMAIL
+- [ ] `phoneNumber="010-1234-5678"` (국가코드 누락) → 400 VALIDATION_FAILED
+- [ ] `email="no-at-sign"` → 400 VALIDATION_FAILED
+- [ ] PATCH 로 `firstName` 만 단독 전송 → 400 "firstName and lastName must be provided together"
+- [ ] PATCH 로 동일 값만 전송 → 200 + DB update 없음 (`SELECT updated_at FROM guest` 로 확인)
+- [ ] PATCH 로 이미 존재하는 타인의 이메일로 변경 시도 → 409 DUPLICATE_EMAIL
+- [ ] gRPC `grpcurl -plaintext -d '{"id":"..."}' 127.0.0.1:9093 com.reservation.contracts.guest.GuestService/GetGuest` 정상 응답
+- [ ] gRPC `GetGuest` 에 존재하지 않는 id → `NOT_FOUND`
+- [ ] gRPC `BatchGetGuests` 에 101건 전달 → `INVALID_ARGUMENT`
+- [ ] gRPC `BatchGetGuests` 에 존재 + 존재하지 않는 id 혼합 → 존재분만 반환 (guests 배열 길이 확인)
+- [ ] guest DB 에 outbox 테이블이 **없어야** 함 (이벤트 발행 없음)
+
 ---
 
-## 6. 다음 단계에서 추가될 API (예고)
-
-### guest-service (PR-1.3 예정)
-- POST /api/v1/guests — 투숙객 등록 (FR-G-01)
-- GET /api/v1/guests/{guestId}
-- PATCH /api/v1/guests/{guestId}
-- **gRPC** `GetGuest` · `BatchGetGuests` (reservation-service 가 호출) — 이 프로젝트 **최초의 gRPC 서버**
+## 7. 다음 단계에서 추가될 API (예고)
 
 ### reservation-service (PR-2.x 예정)
 - `hotel-events` 구독 → Inventory 레코드 생성/제거
@@ -585,7 +790,7 @@ DELETE /api/v1/rooms/{roomId}  → RoomDeletedEvent
 
 ---
 
-## 7. 참고
+## 8. 참고
 
 - [PRD §5 기능 요구사항](../prd/hotel_reservation_prd.md)
 - [001 학습 노트 — 서비스 분리 결정 분석](./001-hotel-rate-service-split-analysis.md)
