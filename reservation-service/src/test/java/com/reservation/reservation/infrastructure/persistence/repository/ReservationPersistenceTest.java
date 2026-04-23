@@ -3,14 +3,17 @@ package com.reservation.reservation.infrastructure.persistence.repository;
 import com.reservation.common.persistence.UuidBinaryConverter;
 import com.reservation.common.test.MysqlContainerExtension;
 import com.reservation.reservation.domain.model.BillingQuote;
+import com.reservation.reservation.domain.model.CancellationReason;
 import com.reservation.reservation.domain.model.GuestId;
 import com.reservation.reservation.domain.model.HotelId;
 import com.reservation.reservation.domain.model.Money;
 import com.reservation.reservation.domain.model.NumberOfGuests;
 import com.reservation.reservation.domain.model.Reservation;
 import com.reservation.reservation.domain.model.ReservationId;
+import com.reservation.reservation.domain.model.ReservationStatus;
 import com.reservation.reservation.domain.model.RoomTypeId;
 import com.reservation.reservation.domain.model.StayPeriod;
+import com.reservation.reservation.domain.model.TwentyFourHourCancellationPolicy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,5 +93,35 @@ class ReservationPersistenceTest {
         Optional<Reservation> result = repository.findById(ReservationId.newId());
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CANCELLED 예약 round-trip — Cancellation VO 4 컬럼 평탄화 ↔ 복원 정합")
+    void cancellationRoundTrip() {
+        ReservationRepositoryImpl repository = new ReservationRepositoryImpl(jpaRepository);
+        Reservation reservation = Reservation.create(
+            HOTEL, ROOM_TYPE, GUEST, PERIOD, NumberOfGuests.of(2),
+            new BillingQuote(Money.of(300_000L, "KRW"), NOW), CLOCK);
+        Instant cancelAt = Instant.parse("2026-05-15T03:00:00Z"); // 24h 전이라 환불 100%
+        Clock cancelClock = Clock.fixed(cancelAt, ZoneOffset.UTC);
+        reservation.cancel(new TwentyFourHourCancellationPolicy(),
+            CancellationReason.USER_REQUEST, cancelClock);
+        Reservation saved = repository.save(reservation);
+        em.flush();
+        em.clear();
+
+        Optional<Reservation> loaded = repository.findById(saved.id());
+
+        assertThat(loaded).isPresent();
+        Reservation r = loaded.get();
+        assertThat(r.status()).isEqualTo(ReservationStatus.CANCELLED);
+        assertThat(r.cancellation()).isPresent();
+        assertThat(r.cancellation().orElseThrow().cancelledAt()).isEqualTo(cancelAt);
+        assertThat(r.cancellation().orElseThrow().reason())
+            .isEqualTo(CancellationReason.USER_REQUEST);
+        assertThat(r.cancellation().orElseThrow().outcome().refundRate())
+            .isEqualByComparingTo(new java.math.BigDecimal("1.00"));
+        assertThat(r.cancellation().orElseThrow().outcome().policyName())
+            .isEqualTo(TwentyFourHourCancellationPolicy.NAME);
     }
 }

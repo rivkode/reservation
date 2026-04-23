@@ -54,4 +54,29 @@ public class KafkaConsumerConfig {
         factory.setConsumerFactory(hotelEventsConsumerFactory);
         return factory;
     }
+
+    @Bean
+    public ConsumerFactory<String, byte[]> billingEventsConsumerFactory(
+        @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
+        @Value("${app.kafka.consumer.billing-events.group-id:reservation-service.billing-events}") String groupId) {
+
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, byte[]> billingEventsListenerContainerFactory(
+        ConsumerFactory<String, byte[]> billingEventsConsumerFactory) {
+
+        ConcurrentKafkaListenerContainerFactory<String, byte[]> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(billingEventsConsumerFactory);
+        return factory;
+    }
 }
