@@ -1,5 +1,6 @@
 package com.reservation.reservation.domain.model;
 
+import com.reservation.reservation.domain.exception.InsufficientInventoryException;
 import com.reservation.reservation.domain.exception.InvalidInventoryOperationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -108,6 +109,50 @@ class RoomTypeInventoryTest {
 
             assertThat(inv.totalRooms().isZero()).isTrue();
             assertThat(inv.availableRooms().isZero()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("decrease (예약 차감)")
+    class Decrease {
+
+        @Test
+        @DisplayName("available -1, total 은 불변, updatedAt 갱신")
+        void decreases_available_only() {
+            RoomTypeInventory inv = inventoryWithTotal(5);
+            Instant later = NOW.plusSeconds(60);
+            Clock laterClock = Clock.fixed(later, ZoneOffset.UTC);
+
+            inv.decrease(laterClock);
+
+            assertThat(inv.totalRooms().value()).as("totalRooms 불변").isEqualTo(5);
+            assertThat(inv.availableRooms().value()).isEqualTo(4);
+            assertThat(inv.updatedAt()).isEqualTo(later);
+        }
+
+        @Test
+        @DisplayName("available 이 0 이면 InsufficientInventoryException — 오버부킹 방어")
+        void rejects_when_no_availability() {
+            RoomTypeInventory inv = RoomTypeInventory.restore(
+                new InventoryKey(HOTEL_ID, ROOM_TYPE_ID, STAY_DATE),
+                InventoryCount.of(5), InventoryCount.zero(), 0L, NOW, NOW);
+
+            assertThatExceptionOfType(InsufficientInventoryException.class)
+                .isThrownBy(() -> inv.decrease(CLOCK))
+                .matches(e -> e.key().equals(inv.key()));
+        }
+
+        @Test
+        @DisplayName("available 1 → 0 까지 차감 가능 (마지막 한 개)")
+        void allows_until_zero() {
+            RoomTypeInventory inv = RoomTypeInventory.restore(
+                new InventoryKey(HOTEL_ID, ROOM_TYPE_ID, STAY_DATE),
+                InventoryCount.of(3), InventoryCount.of(1), 0L, NOW, NOW);
+
+            inv.decrease(CLOCK);
+
+            assertThat(inv.availableRooms().isZero()).isTrue();
+            assertThat(inv.totalRooms().value()).isEqualTo(3);
         }
     }
 

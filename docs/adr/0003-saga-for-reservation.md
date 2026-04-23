@@ -22,6 +22,14 @@ Database per Service 원칙상 분산 트랜잭션(2PC) 배제.
 
 1. **reservation-service 로컬 트랜잭션**:
    - `RoomTypeInventory` 차감 + `Reservation` 생성 + `outbox` 에 `ReservationCreated` 적재
+   - `Reservation` 과 N개의 `RoomTypeInventory` 가 **별개 Aggregate 임에도 같은 트랜잭션
+     에서 변경**된다. 일반적으로 다중 Aggregate update 는 권장되지 않으나, 본 도메인은
+     "예약 행위 = 재고 차감 + 예약 레코드 생성" 이 atomic 해야 오버부킹을 방지할 수 있어
+     (PRD §3.2 SoT 요구사항) 같은 로컬 트랜잭션이 불가피하다. Aggregate 경계는 생명주기 ·
+     일관성 경계 분리(예약 단건 vs 날짜별 재고 집계) 로 정당화되며, 트랜잭션 경계와 분리해
+     설계한다 — 트랜잭션은 인프라 결정이고 Aggregate 는 도메인 결정이다.
+   - 외부 IO(guest-service · rate-service gRPC 호출) 는 트랜잭션 **밖** 에서 수행해
+     커넥션 점유 시간을 최소화한다.
 2. Outbox publisher 가 `reservation-events` 토픽으로 발행
 3. 구독자 처리:
    - **rate-service**: Billing 생성 → `billing-events/BillingCreated` 발행
