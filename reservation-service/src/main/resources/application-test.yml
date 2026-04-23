@@ -1,5 +1,43 @@
 server:
   port: 0
 
-# 단위 · 슬라이스 테스트 기본값. Testcontainers 기반 통합 테스트는
-# MysqlContainerExtension 이 spring.datasource.* 를 시스템 프로퍼티로 주입한다.
+# 단위 · 슬라이스 테스트 기본값. @SpringBootTest(webEnvironment = ...) 에 따라 실제
+# 바인딩 유무가 결정된다. Testcontainers 기반 통합 테스트는 MysqlContainerExtension /
+# Kafka 컨테이너가 시스템 프로퍼티로 spring.datasource.* · spring.kafka.* 를 주입한다.
+#
+# contextLoads 스모크 테스트(프레임워크 스타트업 검증) 는 MySQL/Kafka 컨테이너 없이
+# H2 + @KafkaListener 의 autoStartup=false 로 띄운다. Flyway 는 MySQL 방언 SQL 을
+# 포함하므로 비활성화하고 Hibernate ddl-auto=create-drop 로 JPA 메타데이터에서
+# 스키마를 만든다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:reservation-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+
+app:
+  inventory:
+    # 운영은 90 — 테스트는 3 으로 축소해 90회 루프/save 비용을 피한다. 테스트 내에서도
+    # "오늘 ~ 오늘+3" 네 날짜 row 로 동일한 엣지 케이스(생성/누적/tombstone)를 커버 가능.
+    horizon-days: 3
+  kafka:
+    # @KafkaListener autoStartup 에 바인딩. 스모크/슬라이스 테스트는 실 브로커 없이
+    # 기동하므로 리스너를 정지 상태로 시작한다. 실 Kafka 연동 검증은 Testcontainers /
+    # Embedded Kafka 통합 테스트가 담당(명시적으로 true 로 오버라이드).
+    listener:
+      auto-startup: false
+    consumer:
+      hotel-events:
+        group-id: reservation-service.hotel-events.test
