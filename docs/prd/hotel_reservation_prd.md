@@ -361,15 +361,15 @@ hotel-service: Room 변경 → RoomCreated/Updated/Deleted 이벤트 발행
 
 ## 14. 진행 현황
 
-- [ ] PR-0.1: 멀티모듈 골격
-- [ ] PR-0.2: contracts (proto + event)
-- [ ] PR-0.3: common-infrastructure
-- [ ] PR-0.4: ArchUnit 규칙
-- [ ] PR-0.5: Docker Compose + 부팅 확인
-- [ ] PR-1.1: hotel-service
-- [ ] PR-1.2: rate-service
-- [ ] PR-1.3: guest-service (+ gRPC)
-- [ ] PR-2.1: reservation-service Inventory
+- [x] PR-0.1: 멀티모듈 골격
+- [x] PR-0.2: contracts (proto + event)
+- [x] PR-0.3: common-infrastructure
+- [x] PR-0.4: ArchUnit 규칙
+- [x] PR-0.5: Docker Compose + 부팅 확인
+- [x] PR-1.1: hotel-service
+- [x] PR-1.2: rate-service
+- [x] PR-1.3: guest-service (+ gRPC)
+- [x] PR-2.1: reservation-service Inventory
 - [x] PR-2.2: reservation-service 예약 생성
 - [x] PR-2.3: reservation-service 예약 취소
 - [ ] PR-2.4: reservation-service Inventory gRPC
