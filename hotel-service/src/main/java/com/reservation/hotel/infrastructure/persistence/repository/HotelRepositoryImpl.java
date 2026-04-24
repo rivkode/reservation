@@ -8,6 +8,7 @@ import com.reservation.hotel.infrastructure.persistence.mapper.HotelJpaMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -31,5 +32,10 @@ public class HotelRepositoryImpl implements HotelRepository {
     @Override
     public boolean existsById(HotelId id) {
         return jpaRepository.existsById(id.value());
+    }
+
+    @Override
+    public List<HotelId> findAllIds() {
+        return jpaRepository.findAllIdsProjected().stream().map(HotelId::of).toList();
     }
 }

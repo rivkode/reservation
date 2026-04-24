@@ -1,5 +1,6 @@
 package com.reservation.hotel.infrastructure.cache;
 
+import com.reservation.hotel.application.dto.InventoryRebuildEntry;
 import com.reservation.hotel.application.dto.RoomAvailabilitySnapshot;
 import com.reservation.hotel.domain.model.HotelId;
 import com.reservation.hotel.domain.model.RoomTypeId;
@@ -194,5 +195,54 @@ class RedisRoomAvailabilityCacheTest {
             "available", Integer.toString(available),
             "total", Integer.toString(total),
             "updatedAt", updatedAtIso));
+    }
+
+    @Test
+    @DisplayName("upsertAll — 부재 key 는 생성, 기존 key 는 값 교체 (HSET semantics)")
+    void upsertAll_creates_and_overwrites() {
+        LocalDate d1 = LocalDate.of(2026, 6, 1);
+        LocalDate d2 = LocalDate.of(2026, 6, 2);
+        // d1 은 미리 채워둠 (rebuild 로 덮어쓰기)
+        seed(d1, 100, 100, "2020-01-01T00:00:00Z");
+        // d2 는 부재 → 새로 생성
+
+        cache.upsertAll(List.of(
+            new InventoryRebuildEntry(HOTEL_ID, ROOM_TYPE_ID, d1, 3, 10, NOW),
+            new InventoryRebuildEntry(HOTEL_ID, ROOM_TYPE_ID, d2, 7, 10, NOW)));
+
+        Map<Object, Object> hash1 = redisTemplate.opsForHash().entries(
+            RedisRoomAvailabilityCache.buildKey(HOTEL_ID, ROOM_TYPE_ID, d1));
+        Map<Object, Object> hash2 = redisTemplate.opsForHash().entries(
+            RedisRoomAvailabilityCache.buildKey(HOTEL_ID, ROOM_TYPE_ID, d2));
+        assertThat(hash1).containsEntry("available", "3").containsEntry("total", "10")
+            .containsEntry("updatedAt", "2026-06-01T10:00:00Z");
+        assertThat(hash2).containsEntry("available", "7").containsEntry("total", "10")
+            .containsEntry("updatedAt", "2026-06-01T10:00:00Z");
+    }
+
+    @Test
+    @DisplayName("upsertAll — 빈 리스트는 no-op")
+    void upsertAll_noop_on_empty() {
+        cache.upsertAll(List.of());
+
+        // 기존 키가 없었다면 생성도 안 됨
+        assertThat(redisTemplate.hasKey("avail:*")).isFalse();
+    }
+
+    @Test
+    @DisplayName("upsertAll 후 readRange 로 동일 데이터 조회 (roundtrip)")
+    void upsertAll_then_readRange_roundtrip() {
+        LocalDate d1 = LocalDate.of(2026, 6, 1);
+        LocalDate d2 = LocalDate.of(2026, 6, 2);
+        cache.upsertAll(List.of(
+            new InventoryRebuildEntry(HOTEL_ID, ROOM_TYPE_ID, d1, 3, 10, NOW),
+            new InventoryRebuildEntry(HOTEL_ID, ROOM_TYPE_ID, d2, 5, 10, NOW)));
+
+        List<RoomAvailabilitySnapshot> result =
+            cache.readRange(HOTEL_ID, ROOM_TYPE_ID, d1, d2.plusDays(1));
+
+        assertThat(result).containsExactly(
+            new RoomAvailabilitySnapshot(d1, 3, 10, NOW),
+            new RoomAvailabilitySnapshot(d2, 5, 10, NOW));
     }
 }

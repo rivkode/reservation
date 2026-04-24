@@ -1,8 +1,10 @@
 package com.reservation.hotel.infrastructure.cache;
 
+import com.reservation.hotel.application.dto.InventoryRebuildEntry;
 import com.reservation.hotel.application.dto.RoomAvailabilitySnapshot;
 import com.reservation.hotel.application.port.RoomAvailabilityCache;
 import com.reservation.hotel.application.port.RoomAvailabilityQuery;
+import com.reservation.hotel.application.port.RoomAvailabilityRebuilder;
 import com.reservation.hotel.domain.model.HotelId;
 import com.reservation.hotel.domain.model.RoomTypeId;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +42,8 @@ import java.util.List;
  */
 @Component
 @RequiredArgsConstructor
-public class RedisRoomAvailabilityCache implements RoomAvailabilityCache, RoomAvailabilityQuery {
+public class RedisRoomAvailabilityCache
+    implements RoomAvailabilityCache, RoomAvailabilityQuery, RoomAvailabilityRebuilder {
 
     static final String KEY_PREFIX = "avail:";
     /** Redis Hash field 이름. Lua 스크립트와 후속 조회 API (PR-3.2) 가 공유해야 하는 계약. */
@@ -143,6 +146,39 @@ public class RedisRoomAvailabilityCache implements RoomAvailabilityCache, RoomAv
                 Instant.parse(updatedAt)));
         }
         return snapshots;
+    }
+
+    /**
+     * FR-H-08 — 재구축 entry 들을 Redis Hash 로 HSET upsert. pipeline 으로 묶어 대량 데이터도
+     * 1 RTT 에 전송한다. 기존 key 는 값이 교체되고, 부재였던 key 는 생성된다. Lua 를 쓰지 않아도
+     * 원자성이 필요 없다 — 재구축은 SoT 스냅샷을 그대로 덮어쓰는 "최종적으로 정합" 보장이면
+     * 충분하고, 개별 HSET 의 중간 상태가 조회에 노출돼도 다음 HSET 으로 곧 정정된다.
+     *
+     * <p><strong>실패 시 semantics</strong>: pipeline 중 네트워크/서버 오류로
+     * {@link DataAccessException} 이 던져지면 일부 entry 만 기록된 부분 쓰기 상태가 된다.
+     * 호출자({@link com.reservation.hotel.application.service.AvailabilityRebuildApplicationService})
+     * 는 해당 호텔을 failed 로 집계하고 계속 진행하며, 다음 daily tick 이 동일 entry 를
+     * 덮어쓰기로 재시도해 수렴 복구한다.
+     */
+    @Override
+    public void upsertAll(List<InventoryRebuildEntry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            @Override
+            public Object execute(RedisOperations operations) throws DataAccessException {
+                for (InventoryRebuildEntry e : entries) {
+                    String key = buildKey(e.hotelId(), e.roomTypeId(), e.date());
+                    operations.opsForHash().putAll(key, java.util.Map.of(
+                        FIELD_AVAILABLE, Integer.toString(e.available()),
+                        FIELD_TOTAL, Integer.toString(e.total()),
+                        FIELD_UPDATED_AT, UPDATED_AT_FORMAT.format(e.updatedAt())));
+                }
+                return null;
+            }
+        });
     }
 
     static String buildKey(HotelId hotelId, RoomTypeId roomTypeId, LocalDate stayDate) {
