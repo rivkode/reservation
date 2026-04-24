@@ -15,7 +15,10 @@ public enum HotelErrorCode {
     DUPLICATE_ROOM_TYPE_NAME(CommonErrorCode.CONFLICT),
     DUPLICATE_ROOM_NUMBER(CommonErrorCode.CONFLICT),
     ROOM_TYPE_HOTEL_MISMATCH(CommonErrorCode.CONFLICT),
-    INVALID_ROOM_STATE_TRANSITION(CommonErrorCode.CONFLICT);
+    INVALID_ROOM_STATE_TRANSITION(CommonErrorCode.CONFLICT),
+
+    /** Redis(Read Model 저장소) 가 일시적으로 사용 불가. ADR 0004 — gRPC fallback 없음. */
+    AVAILABILITY_CACHE_UNAVAILABLE(CommonErrorCode.EXTERNAL_SERVICE_UNAVAILABLE);
 
     private final CommonErrorCode category;
 
