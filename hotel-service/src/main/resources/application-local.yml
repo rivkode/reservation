@@ -50,3 +50,20 @@ app:
     consumer:
       reservation-events:
         group-id: hotel-service.reservation-events
+  # PR-3.3 — 가용성 캐시 재구축 배치. IDE 로컬 실행 기본값은 활성화. cron 은 Asia/Seoul
+  # 기준 매일 02:00. horizon 은 PRD §13 Q7 의 "90일" 과 정합.
+  availability:
+    max-range-days: 90
+    rebuild:
+      enabled: true
+      horizon-days: 90
+      cron: "0 0 2 * * *"
+      zone: Asia/Seoul
+
+# PR-3.3 — reservation-service StreamInventory gRPC 클라이언트. 로컬에서는 별도 프로세스로
+# 기동한 reservation-service (port 9094) 를 바라본다.
+grpc:
+  client:
+    reservation-service:
+      address: "static://127.0.0.1:9094"
+      negotiation-type: plaintext

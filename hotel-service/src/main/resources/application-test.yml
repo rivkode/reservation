@@ -46,3 +46,17 @@ app:
     consumer:
       reservation-events:
         group-id: hotel-service.reservation-events.test
+  # PR-3.3 — 테스트에서는 Scheduler 빈을 비활성화해 ApplicationReadyEvent / @Scheduled 가
+  # 실제 gRPC 호출을 시도하지 않게 한다. 필요한 통합 테스트는 명시적으로 true 로 override.
+  availability:
+    rebuild:
+      enabled: false
+
+# PR-3.3 — 테스트에서는 gRPC 클라이언트 채널을 in-process 로 지정 (개별 테스트가 stub 을
+# 별도로 주입하는 경우가 많음). reservation-service 라벨만 설정해 net.devh 자동설정 오류
+# 를 방지.
+grpc:
+  client:
+    reservation-service:
+      address: "in-process:reservation-service-test"
+      negotiation-type: plaintext
