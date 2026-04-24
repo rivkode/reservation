@@ -25,7 +25,24 @@ spring:
     enabled: false
   kafka:
     bootstrap-servers: localhost:9092
+  # PR-3.1 — Redis 는 Testcontainers 통합 테스트가 DynamicPropertySource / 수동 wiring 으로
+  # 주입한다. 스모크 테스트는 실제 Redis 를 기동하지 않고 Spring Boot 의 spring.data.redis
+  # 자동설정만 통과하면 되므로 localhost:6379 를 기본값으로 둔다 — consumer/cache 는
+  # 리스너 autoStartup=false, 테스트 프로파일에서 빈 주입만 확인한다.
+  data:
+    redis:
+      host: localhost
+      port: 6379
 
 app:
   outbox:
     poll-delay-ms: 60000
+  # PR-3.1 — @KafkaListener autoStartup 제어. 스모크/슬라이스 테스트는 실 브로커 없이 기동
+  # 하므로 리스너를 정지 상태로 시작한다. 실 Kafka 연동 검증은 별도 통합 테스트가 명시적으로
+  # true 로 오버라이드한다.
+  kafka:
+    listener:
+      auto-startup: false
+    consumer:
+      reservation-events:
+        group-id: hotel-service.reservation-events.test

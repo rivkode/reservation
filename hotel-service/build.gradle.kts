@@ -15,6 +15,12 @@ dependencies {
     runtimeOnly(libs.flyway.mysql)
     runtimeOnly(libs.mysql.connector.j)
 
+    // PR-3.1 — RoomAvailabilityView Read Model 을 Redis Hash 로 유지 (HINCRBY 기반
+    // 원자 증감). spring-kafka · contracts 는 common-infrastructure 가 api() 로 노출
+    // 하므로 별도 선언 불요 — reservation-events Kafka consumer 는 @KafkaListener 를
+    // transitive 로 사용한다.
+    implementation(libs.spring.boot.starter.data.redis)
+
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(testFixtures(project(":common-infrastructure")))
     testRuntimeOnly(libs.junit.platform.launcher)

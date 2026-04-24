@@ -30,9 +30,23 @@ spring:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+  # PR-3.1 — RoomAvailabilityView Read Model 저장소. docker-compose 의 hotel-redis 컨테이너
+  # (requirepass 적용) 를 host-port 6379 로 바라본다. password 는 compose 의 .env 와 동일하게
+  # 로컬 쉘 환경변수 REDIS_PASSWORD 로 주입하거나, IDE run configuration 에 설정한다.
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: ${REDIS_PASSWORD:}
 
 app:
   outbox:
     poll-delay-ms: 1000
     batch-size: 100
     send-timeout-ms: 5000
+  # PR-3.1 — reservation-events 구독 consumer 그룹. hotel-service 전용 group-id 로
+  # reservation-service 내부 consumer 와 완전 분리된 offset 을 가진다.
+  kafka:
+    consumer:
+      reservation-events:
+        group-id: hotel-service.reservation-events
