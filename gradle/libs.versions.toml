@@ -36,6 +36,11 @@ archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref
 java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+
+# PR-3.1 hotel-service — RoomAvailabilityView Read Model 저장소. Lettuce 클라이언트(기본)
+# + spring-data-redis + connection pooling 을 한 번에 제공. Redis 연결 정보(host/port/
+# password/database) 는 spring.data.redis.* 표준 프로퍼티로 application-*.yml 에서 주입.
+spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-mysql = { module = "org.flywaydb:flyway-mysql" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j" }
