@@ -1,9 +1,14 @@
 package com.reservation.hotel.infrastructure.cache;
 
+import com.reservation.hotel.application.dto.RoomAvailabilitySnapshot;
 import com.reservation.hotel.application.port.RoomAvailabilityCache;
+import com.reservation.hotel.application.port.RoomAvailabilityQuery;
 import com.reservation.hotel.domain.model.HotelId;
 import com.reservation.hotel.domain.model.RoomTypeId;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -12,7 +17,9 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * {@link RoomAvailabilityCache} 의 Redis 구현. ADR 0004 의 {@code RoomAvailabilityView}
@@ -33,7 +40,7 @@ import java.util.Collections;
  */
 @Component
 @RequiredArgsConstructor
-public class RedisRoomAvailabilityCache implements RoomAvailabilityCache {
+public class RedisRoomAvailabilityCache implements RoomAvailabilityCache, RoomAvailabilityQuery {
 
     static final String KEY_PREFIX = "avail:";
     /** Redis Hash field 이름. Lua 스크립트와 후속 조회 API (PR-3.2) 가 공유해야 하는 계약. */
@@ -65,6 +72,9 @@ public class RedisRoomAvailabilityCache implements RoomAvailabilityCache {
 
     private final StringRedisTemplate redisTemplate;
 
+    private static final List<String> READ_FIELDS =
+        List.of(FIELD_AVAILABLE, FIELD_TOTAL, FIELD_UPDATED_AT);
+
     @Override
     public boolean adjustAvailable(HotelId hotelId,
                                    RoomTypeId roomTypeId,
@@ -78,6 +88,61 @@ public class RedisRoomAvailabilityCache implements RoomAvailabilityCache {
             String.valueOf(delta),
             UPDATED_AT_FORMAT.format(updatedAt));
         return result != null && result == 1L;
+    }
+
+    /**
+     * FR-H-06 — 지정 반개구간의 각 날짜에 대한 HMGET 을 하나의 Redis pipeline 으로 묶어 1 RTT
+     * 에 전송한다. 최대 90일 × HMGET 을 순차로 돌리면 프로덕션 RTT 기준 SLO(PRD §6 p99 200ms)
+     * 를 초과할 수 있어 파이프라인화를 선택. 부재 key 또는 field 누락은 결과에서 제외한다.
+     *
+     * <p>Spring Data Redis 의 {@code executePipelined} 는 SessionCallback 내에서 수행된 명령의
+     * 결과를 순서대로 담은 {@code List<Object>} 를 반환 — 날짜 인덱스와 결과 인덱스가 1:1 로
+     * 대응하므로 재정렬 없이 매핑 가능.
+     */
+    @Override
+    public List<RoomAvailabilitySnapshot> readRange(HotelId hotelId,
+                                                    RoomTypeId roomTypeId,
+                                                    LocalDate fromInclusive,
+                                                    LocalDate toExclusive) {
+        List<LocalDate> dates = new ArrayList<>();
+        for (LocalDate d = fromInclusive; d.isBefore(toExclusive); d = d.plusDays(1)) {
+            dates.add(d);
+        }
+        if (dates.isEmpty()) {
+            return List.of();
+        }
+
+        List<Object> pipelineResults = redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            @Override
+            public Object execute(RedisOperations operations) throws DataAccessException {
+                for (LocalDate d : dates) {
+                    operations.opsForHash().multiGet(buildKey(hotelId, roomTypeId, d), READ_FIELDS);
+                }
+                return null;
+            }
+        });
+
+        List<RoomAvailabilitySnapshot> snapshots = new ArrayList<>(pipelineResults.size());
+        for (int i = 0; i < pipelineResults.size(); i++) {
+            @SuppressWarnings("unchecked")
+            List<String> values = (List<String>) pipelineResults.get(i);
+            if (values == null || values.size() < 3) {
+                continue;
+            }
+            String available = values.get(0);
+            String total = values.get(1);
+            String updatedAt = values.get(2);
+            if (available == null || total == null || updatedAt == null) {
+                continue;
+            }
+            snapshots.add(new RoomAvailabilitySnapshot(
+                dates.get(i),
+                Integer.parseInt(available),
+                Integer.parseInt(total),
+                Instant.parse(updatedAt)));
+        }
+        return snapshots;
     }
 
     static String buildKey(HotelId hotelId, RoomTypeId roomTypeId, LocalDate stayDate) {

@@ -1,5 +1,6 @@
 package com.reservation.hotel.infrastructure.cache;
 
+import com.reservation.hotel.application.dto.RoomAvailabilitySnapshot;
 import com.reservation.hotel.domain.model.HotelId;
 import com.reservation.hotel.domain.model.RoomTypeId;
 import org.junit.jupiter.api.AfterAll;
@@ -7,6 +8,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.testcontainers.containers.GenericContainer;
@@ -16,6 +19,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -138,5 +142,57 @@ class RedisRoomAvailabilityCacheTest {
 
         assertThat(key).isEqualTo(
             "avail:01933333-1111-7aaa-9aaa-111122223333:01933333-2222-7aaa-9aaa-111122223333:2026-06-01");
+    }
+
+    @Test
+    @DisplayName("readRange — 존재하는 날짜만 오름차순 스냅샷으로 반환")
+    void readRange_returns_existing_days_in_order() {
+        LocalDate d1 = LocalDate.of(2026, 6, 1);
+        LocalDate d2 = LocalDate.of(2026, 6, 2);
+        LocalDate d3 = LocalDate.of(2026, 6, 3);
+        seed(d1, 5, 10, "2026-06-01T10:00:00Z");
+        // d2 의도적으로 누락
+        seed(d3, 7, 10, "2026-06-01T10:00:15Z");
+
+        List<RoomAvailabilitySnapshot> result = cache.readRange(HOTEL_ID, ROOM_TYPE_ID, d1, d3.plusDays(1));
+
+        assertThat(result).containsExactly(
+            new RoomAvailabilitySnapshot(d1, 5, 10, Instant.parse("2026-06-01T10:00:00Z")),
+            new RoomAvailabilitySnapshot(d3, 7, 10, Instant.parse("2026-06-01T10:00:15Z")));
+    }
+
+    @Test
+    @DisplayName("readRange — 모든 날짜 부재면 빈 리스트")
+    void readRange_returns_empty_when_all_missing() {
+        List<RoomAvailabilitySnapshot> result = cache.readRange(HOTEL_ID, ROOM_TYPE_ID,
+            LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 3));
+
+        assertThat(result).isEmpty();
+    }
+
+    @ParameterizedTest(name = "{0} 필드 누락 시 해당 날짜 스킵")
+    @ValueSource(strings = {"available", "total", "updatedAt"})
+    @DisplayName("readRange — 필수 field 중 하나라도 없으면 스킵")
+    void readRange_skips_partial_hash(String missingField) {
+        LocalDate d1 = LocalDate.of(2026, 6, 1);
+        String key = RedisRoomAvailabilityCache.buildKey(HOTEL_ID, ROOM_TYPE_ID, d1);
+        Map<String, String> fullHash = new java.util.HashMap<>(Map.of(
+            "available", "5",
+            "total", "10",
+            "updatedAt", "2026-06-01T10:00:00Z"));
+        fullHash.remove(missingField);
+        redisTemplate.opsForHash().putAll(key, fullHash);
+
+        List<RoomAvailabilitySnapshot> result = cache.readRange(HOTEL_ID, ROOM_TYPE_ID, d1, d1.plusDays(1));
+
+        assertThat(result).isEmpty();
+    }
+
+    private void seed(LocalDate date, int available, int total, String updatedAtIso) {
+        String key = RedisRoomAvailabilityCache.buildKey(HOTEL_ID, ROOM_TYPE_ID, date);
+        redisTemplate.opsForHash().putAll(key, Map.of(
+            "available", Integer.toString(available),
+            "total", Integer.toString(total),
+            "updatedAt", updatedAtIso));
     }
 }
